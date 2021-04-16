@@ -2,10 +2,10 @@
 args=commandArgs(trailing=T)
 if(len(args)<1) {
     cat("\n")
-    cat("   usage: getMetaFiles.R halo01.csv [halo02.csv]\n")
+    cat("   usage: SCRIPT_NAME.R ARG1 ARG2\n")
     cat("\n")
-    cat("      - halo01.csv, halo02.csv, ... filenames of halo files to scan\n")
-    cat("                                    can be compressed (.gz)\n")
+    cat("      ARG1 - What is ARG1\n")
+    cat("      ARG2 - What is ARG2\n")
     cat("\n")
     quit()
 }
