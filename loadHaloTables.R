@@ -14,7 +14,7 @@ VERSION="v1.0.1"
 SDIR=dirname(ndsTools::thisFile())
 source(file.path(SDIR,"tools.R"))
 ####################################################################################
-stop("\n\nINCLUDE\n\n")
+if(interactive()) stop("\n\nINCLUDE\n\n")
 ####################################################################################
 suppressPackageStartupMessages({
     require(tidyverse)
