@@ -5,9 +5,9 @@ Authors@R:
     person("N.", "Socci", , "soccin@mskcc.org", role = c("aut", "cre"))
 Description: Lightweight (hopefully) scripts to process Halo files.
 Depends:
-    R (>= 4.3)
-    dplyr
-    tidyr
+    R (>= 4.3),
+    dplyr,
+    tidyr,
     purrr
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
