@@ -4,6 +4,7 @@ suppressPackageStartupMessages({
     require(purrr)
 })
 
+#' @export
 load_halo <- function(hfile,uuidCols,sampleName,cols.extra,markerMap) {
 
     if(missing(uuidCols)) {
