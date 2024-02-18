@@ -1,11 +1,26 @@
+#' @import dplyr
+#' @import tidyr
+#' @import purrr
+
 suppressPackageStartupMessages({
     require(dplyr)
     require(tidyr)
     require(purrr)
 })
 
+#' Load a Halo Object CSV file
+#'
+#' @param hfile Halo CSV file
+#' @param uuidCols Columns to use to compute cell UUID
+#' @param sampleName If string set SID, if function SID=sampleName(hfile)
+#' @param colsExtra Any extra columns to include
+#' @param markerMap Names vector to rename markers
+#'
+#' @return A list with elements: cell.data, marker.data, and VERSION
+#'
 #' @export
-load_halo <- function(hfile,uuidCols,sampleName,cols.extra,markerMap) {
+load_halo <- function(hfile,uuidCols,sampleName,colsExtra,markerMap) {
+
 
     if(missing(uuidCols)) {
         stop("\n\nFATAL ERROR::tools.R::load_halo\nuuidCols Missing\n")
@@ -46,8 +61,8 @@ load_halo <- function(hfile,uuidCols,sampleName,cols.extra,markerMap) {
 
     cell.data=left_join(cell.data,markerPos)
 
-    if(!missing(cols.extra)) {
-        extra.data=dd %>% select(UUID,all_of(cols.extra))
+    if(!missing(colsExtra)) {
+        extra.data=dd %>% select(UUID,all_of(colsExtra))
         cell.data=left_join(cell.data,extra.data)
     }
 
