@@ -19,7 +19,7 @@ suppressPackageStartupMessages({
 #' @return A list with elements: cell.data, marker.data, and VERSION
 #'
 #' @export
-load_halo <- function(hfile,uuidCols,sampleName,colsExtra,markerMap) {
+load_halo <- function(hfile,uuidCols,sampleName,colsExtra,markerMap,controlMarkers) {
 
 
     if(missing(uuidCols)) {
@@ -49,12 +49,15 @@ load_halo <- function(hfile,uuidCols,sampleName,colsExtra,markerMap) {
         marker.data=marker.data %>% filter(!is.na(Marker))
     }
 
+    if(missing(controlMarkers)) {
+        controlMarkers=c("DAPI")
+    }
 
     marker.data = marker.data |>
         mutate(MarkerNorm=toupper(Marker))
 
     markerPos=marker.data |>
-        filter(Marker!="DAPI") |>
+        filter(!(Marker %in% controlMarkers)) |>
         group_by(UUID) |>
         summarize(MarkerPos=paste0(sort(MarkerNorm[Positive==1]),collapse=";")) |>
         ungroup()
