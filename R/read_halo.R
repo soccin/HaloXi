@@ -1,10 +1,24 @@
-fixColNames <- function(ss) {
-    gsub(" ","_",ss) |> gsub("_\\(.*\\)$","",x=_)
+#' Clean column names for Halo data
+#'
+#' Replaces spaces with underscores and removes trailing parenthetical units.
+#'
+#' @param col_names Character vector of column names.
+#' @return Cleaned column names.
+fix_col_names <- function(col_names) {
+  col_names |>
+    gsub(" ", "_", x = _) |>
+    gsub("_\\(.*\\)$", "", x = _)
 }
 
-read_halo <- function(ff,...) {
-
-    readr::read_csv(ff, show_col_types = FALSE, progress=F,...) |> dplyr::rename_all(~fixColNames(.))
-
+#' Read a Halo CSV file
+#'
+#' Reads a Halo-exported CSV and cleans column names.
+#'
+#' @param file Path to CSV file.
+#' @param ... Additional arguments passed to readr::read_csv().
+#' @return A tibble with cleaned column names.
+#' @export
+read_halo <- function(file, ...) {
+  readr::read_csv(file, show_col_types = FALSE, progress = FALSE, ...) |>
+    dplyr::rename_all(fix_col_names)
 }
-

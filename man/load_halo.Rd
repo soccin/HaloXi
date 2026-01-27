@@ -4,22 +4,28 @@
 \alias{load_halo}
 \title{Load a Halo Object CSV file}
 \usage{
-load_halo(hfile, uuidCols, sampleName, colsExtra, markerMap)
+load_halo(hfile, uuid_cols, sample_name, cols_extra, marker_map, control_markers)
 }
 \arguments{
-\item{hfile}{Halo CSV file}
+\item{hfile}{Path to Halo CSV file.}
 
-\item{uuidCols}{Columns to use to compute cell UUID}
+\item{uuid_cols}{Column names used to compute cell UUID.}
 
-\item{sampleName}{If string set SID, if function SID=sampleName(hfile)}
+\item{sample_name}{Sample identifier: string or function(hfile) -> string.
+If missing, derived from filename.}
 
-\item{colsExtra}{Any extra columns to include}
+\item{cols_extra}{Additional columns to include in cell.data.}
 
-\item{markerMap}{Names vector to rename markers}
+\item{marker_map}{Named vector to rename markers (old = new).}
+
+\item{control_markers}{Markers to exclude from MarkerPos (default: "DAPI").}
 }
 \value{
-A list with elements: cell.data, marker.data, and VERSION
+A list with elements:
+\item{cell.data}{Tibble with UUID, Sample, coordinates, and MarkerPos.}
+\item{marker.data}{Tibble with UUID, Marker, and Positive status.}
+\item{VERSION}{Package version string.}
 }
 \description{
-Load a Halo Object CSV file
+Reads a Halo CSV and returns structured cell and marker data.
 }
