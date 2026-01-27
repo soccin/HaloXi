@@ -1,6 +1,6 @@
 # Halo Xi
 
-## v0.1.1
+## v1.0.pre
 
 Lightweight (hopefully) scripts to process Halo files.
 
