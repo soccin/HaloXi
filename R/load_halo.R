@@ -43,7 +43,7 @@ load_halo <- function(hfile, uuid_cols, sample_name, cols_extra, marker_map,
   }
 
   dd <- read_halo(hfile) |> mutate(Sample = sid)
-  dd$UUID <- generate_cell_uuid(dd, uuid_cols)
+  dd$UUID <- generate_cell_uuid(dd, c("Sample",uuid_cols))
 
   cell.data <- dd |> select(UUID, Sample, XMin, XMax, YMin, YMax)
 
