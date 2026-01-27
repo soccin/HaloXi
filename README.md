@@ -1,10 +1,8 @@
 # Halo Xi
 
-## ver-240217
+## v0.1.1
 
 Lightweight (hopefully) scripts to process Halo files.
-
-Version to work with UTUC data
 
 
 
