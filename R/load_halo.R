@@ -16,6 +16,7 @@ suppressPackageStartupMessages({
 #' @param uuid_cols Column names used to compute cell UUID.
 #' @param sample_name Sample identifier: string or function(hfile) -> string.
 #'   If missing, derived from filename.
+#' @param colRenameMap Named vector for column renaming (optional).
 #' @param cols_extra Additional columns to include in cell.data.
 #' @param marker_map Named vector to rename markers (old = new).
 #' @param control_markers Markers to exclude from MarkerPos (default: "DAPI").
@@ -26,7 +27,9 @@ suppressPackageStartupMessages({
 #'   \item{VERSION}{Package version string.}
 #'
 #' @export
-load_halo <- function(hfile, uuid_cols, sample_name, cols_extra, marker_map,
+load_halo <- function(hfile, uuid_cols, sample_name,
+                      colRenameMap = NULL,
+                      cols_extra, marker_map,
                       control_markers) {
 
   if (missing(uuid_cols)) {
@@ -42,10 +45,12 @@ load_halo <- function(hfile, uuid_cols, sample_name, cols_extra, marker_map,
     sid <- sample_name
   }
 
-  dd <- read_halo(hfile) |> mutate(Sample = sid)
-  dd$UUID <- generate_cell_uuid(dd, c("Sample",uuid_cols))
+  dd <- read_halo(hfile, colRenameMap = colRenameMap) |>
+    mutate(Sample = sid)
+  dd$UUID <- generate_cell_uuid(dd, c("Sample", uuid_cols))
 
-  cell.data <- dd |> select(UUID, Sample, XMin, XMax, YMin, YMax)
+  cell.data <- dd |>
+    select(UUID, Sample, XMin, XMax, YMin, YMax)
 
   marker.data <- dd |>
     select(UUID, matches("_Positive_Classification$")) |>
@@ -53,8 +58,16 @@ load_halo <- function(hfile, uuid_cols, sample_name, cols_extra, marker_map,
     mutate(Marker = gsub("_Positive_Classification$", "", Marker))
 
   if (!missing(marker_map)) {
+    # Build complete mapping: user-provided + identity for unmapped markers
+    marker_map0 <- marker.data %>%
+      distinct(Marker) %>%
+      filter(!Marker %in% names(marker_map)) %>%
+      mutate(NewMarker = Marker) %>%
+      deframe()
+    marker_map <- c(marker_map, marker_map0)
     marker.data$Marker <- marker_map[marker.data$Marker]
-    marker.data <- marker.data %>% filter(!is.na(Marker))
+    marker.data <- marker.data %>%
+      filter(!is.na(Marker))
   }
 
   if (missing(control_markers)) {
@@ -67,19 +80,20 @@ load_halo <- function(hfile, uuid_cols, sample_name, cols_extra, marker_map,
   marker_pos <- marker.data |>
     filter(!(Marker %in% control_markers)) |>
     group_by(UUID) |>
-    summarize(MarkerPos = paste0(sort(MarkerNorm[Positive == 1]), collapse = ";")) |>
+    summarize(
+      MarkerPos = paste0(sort(MarkerNorm[Positive == 1]), collapse = ";")
+    ) |>
     ungroup()
 
   cell.data <- left_join(cell.data, marker_pos)
 
   if (!missing(cols_extra)) {
-    extra.data <- dd %>% select(UUID, all_of(cols_extra))
+    extra.data <- dd |>
+      select(UUID, all_of(cols_extra))
     cell.data <- left_join(cell.data, extra.data)
   }
 
-  obj <- list(cell.data = cell.data, marker.data = marker.data, VERSION = VERSION)
-
-  obj
+  list(cell.data = cell.data, marker.data = marker.data, VERSION = VERSION)
 }
 
 #' Generate unique cell UUIDs
@@ -90,9 +104,8 @@ load_halo <- function(hfile, uuid_cols, sample_name, cols_extra, marker_map,
 #' @param cols_uuid Column names to use for UUID generation.
 #' @return Character vector of UUIDs.
 generate_cell_uuid <- function(dat, cols_uuid) {
-  lapply(
-    transpose(dat[, cols_uuid]),
-    function(x) { digest::digest(paste(x, collapse = ";"), algo = "sha1") }
-  ) |>
+  dat[, cols_uuid] |>
+    transpose() |>
+    lapply(\(x) digest::digest(paste(x, collapse = ";"), algo = "sha1")) |>
     unlist()
 }
