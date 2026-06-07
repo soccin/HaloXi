@@ -15,11 +15,13 @@ suppressPackageStartupMessages({
 #' @param sampleName If string set SID, if function SID=sampleName(hfile)
 #' @param colsExtra Any extra columns to include
 #' @param markerMap Names vector to rename markers
+#' @param controlMarkers Markers to exclude from the MarkerPos phenotype (default DAPI)
+#' @param n_max Max data rows to read; use a small value (e.g. 100) for a fast QC scan (default Inf)
 #'
 #' @return A list with elements: cell.data, marker.data, and VERSION
 #'
 #' @export
-load_halo <- function(hfile,uuidCols,sampleName,colsExtra,markerMap,controlMarkers) {
+load_halo <- function(hfile,uuidCols,sampleName,colsExtra,markerMap,controlMarkers,n_max=Inf) {
 
 
     if(missing(uuidCols)) {
@@ -34,7 +36,7 @@ load_halo <- function(hfile,uuidCols,sampleName,colsExtra,markerMap,controlMarke
         SID=sampleName
     }
 
-    dd=read_halo(hfile) |> mutate(Sample=SID)
+    dd=read_halo(hfile,n_max=n_max) |> mutate(Sample=SID)
     dd$UUID=generate_Cell_UUID(dd,uuidCols)
 
     cell.data=dd |> select(UUID,Sample,XMin,XMax,YMin,YMax)

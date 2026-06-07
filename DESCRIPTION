@@ -9,7 +9,19 @@ Depends:
     dplyr,
     tidyr,
     purrr
+Imports:
+    digest,
+    fs,
+    glue,
+    readr
+Suggests:
+    ggplot2,
+    scales,
+    forcats,
+    openxlsx,
+    rmarkdown,
+    knitr
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.2.3
+RoxygenNote: 7.3.3
 License: file LICENSE
