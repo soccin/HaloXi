@@ -4,7 +4,15 @@
 \alias{load_halo}
 \title{Load a Halo Object CSV file}
 \usage{
-load_halo(hfile, uuidCols, sampleName, colsExtra, markerMap)
+load_halo(
+  hfile,
+  uuidCols,
+  sampleName,
+  colsExtra,
+  markerMap,
+  controlMarkers,
+  n_max = Inf
+)
 }
 \arguments{
 \item{hfile}{Halo CSV file}
@@ -16,6 +24,10 @@ load_halo(hfile, uuidCols, sampleName, colsExtra, markerMap)
 \item{colsExtra}{Any extra columns to include}
 
 \item{markerMap}{Names vector to rename markers}
+
+\item{controlMarkers}{Markers to exclude from the MarkerPos phenotype (default DAPI)}
+
+\item{n_max}{Max data rows to read; use a small value (e.g. 100) for a fast QC scan (default Inf)}
 }
 \value{
 A list with elements: cell.data, marker.data, and VERSION
