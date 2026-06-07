@@ -115,14 +115,22 @@ tab$positivity_pct |> kable()
 img("marker_heatmap.png")
 ```
 
-## Spatial footprint
+## Spatial footprints
 
 Cell centroids per sample (down-sampled for plotting), coloured by whether the
-cell is phenotyped. Useful for spotting tissue extent, empty regions, or
-artefacts before spatial analysis.
+cell is phenotyped. Each sample has its own plot. Useful for spotting tissue
+extent, empty regions, or artefacts before spatial analysis.
 
-```{r spatial-plot, out.width="100%"}
-img("spatial_footprint.png")
+```{r spatial-plots, results="asis", out.width="75%"}
+## one standalone figure per sample, in sample order
+samples <- names(res$plots$spatial_footprints)
+for (sid in samples) {
+  safe <- gsub("[^A-Za-z0-9._-]+", "_", sid)
+  cat(sprintf("\n\n### %s\n\n", sid))
+  cat(sprintf("![](%s)\n\n",
+              normalizePath(file.path(pdir, sprintf("spatial_%s.png", safe)),
+                            winslash = "/", mustWork = TRUE)))
+}
 ```
 
 ---

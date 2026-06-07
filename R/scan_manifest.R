@@ -398,16 +398,75 @@ plot_marker_presence <- function(presence_matrix) {
         ggplot2::theme(panel.grid = ggplot2::element_blank())
 }
 
-#' Spatial footprint of cell centroids, faceted by sample
+#' Spatial footprint of one sample's cell centroids
+#'
+#' Builds a single clean, square scatter of cell centroids for one sample,
+#' coloured by whether each cell is phenotyped. Used by
+#' [plot_spatial_footprints()] to produce one standalone plot per sample.
+#'
+#' @param sample_cells A data frame of one sample's cells (already
+#'   down-sampled), with `X`, `Y`, and `Phenotyped` columns.
+#' @param sample_id The sample id, used in the title.
+#' @param point_alpha Point transparency.
+#' @param point_size Point size.
+#'
+#' @return A ggplot object.
+#' @keywords internal
+plot_spatial_footprint_one <- function(sample_cells, sample_id,
+                                       point_alpha = 0.4, point_size = 0.5) {
+    n_cells <- nrow(sample_cells)
+    n_pheno <- sum(sample_cells$Phenotyped)
+    subtitle <- glue::glue(
+        "{scales::comma(n_cells)} cells shown - ",
+        "{scales::comma(n_pheno)} phenotyped ",
+        "({round(100 * n_pheno / max(n_cells, 1))}%)"
+    )
+
+    ## coord_fixed keeps the tissue geometry undistorted (1 X px = 1 Y px);
+    ## scale_y_reverse matches image coordinates (origin top-left).
+    ggplot2::ggplot(sample_cells, ggplot2::aes(X, Y, color = Phenotyped)) +
+        ggplot2::geom_point(size = point_size, alpha = point_alpha) +
+        ggplot2::scale_color_manual(
+            values = c(`TRUE` = "#2c7fb8", `FALSE` = "grey75"),
+            labels = c(`TRUE` = "phenotyped", `FALSE` = "unphenotyped"),
+            drop = FALSE
+        ) +
+        ggplot2::scale_y_reverse() +
+        ggplot2::coord_fixed() +
+        ggplot2::labs(
+            title = glue::glue("Spatial footprint - {sample_id}"),
+            subtitle = subtitle,
+            x = "X (px)", y = "Y (px)", color = NULL
+        ) +
+        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme(
+            legend.position = "top",
+            plot.title = ggplot2::element_text(face = "bold"),
+            panel.grid.minor = ggplot2::element_blank(),
+            panel.background = ggplot2::element_rect(fill = "white", colour = NA),
+            plot.background = ggplot2::element_rect(fill = "white", colour = NA)
+        ) +
+        ggplot2::guides(
+            color = ggplot2::guide_legend(override.aes = list(size = 2.5, alpha = 1))
+        )
+}
+
+#' Per-sample spatial footprint plots
+#'
+#' Produces one clean, standalone spatial-footprint plot per sample (cell
+#' centroids coloured by phenotyped status). These are the key QC plots, so
+#' each sample gets its own full-resolution figure rather than a shared facet.
 #'
 #' @param obj A combined object from [load_manifest()].
 #' @param max_points_per_sample Down-sample each sample to at most this many
 #'   points so the plot stays light for very large samples.
+#' @param point_alpha Point transparency (0.3-0.5 reads well for dense tissue).
 #' @param seed RNG seed for reproducible down-sampling.
 #'
-#' @return A ggplot object.
+#' @return A named list of ggplot objects, one per sample (names are sample ids).
 #' @export
-plot_spatial_footprint <- function(obj, max_points_per_sample = 30000, seed = 101) {
+plot_spatial_footprints <- function(obj, max_points_per_sample = 30000,
+                                    point_alpha = 0.4, seed = 101) {
     set.seed(seed)
     pd <- obj$cell.data |>
         mutate(X = (XMin + XMax) / 2, Y = (YMin + YMax) / 2) |>
@@ -416,32 +475,13 @@ plot_spatial_footprint <- function(obj, max_points_per_sample = 30000, seed = 10
         ungroup() |>
         mutate(Phenotyped = MarkerPos != "" & !is.na(MarkerPos))
 
-    n_shown <- nrow(pd)
-    subtitle <- if (n_shown < max_points_per_sample) {
-        "all scanned cells shown"
-    } else {
-        glue::glue("down-sampled to <= {scales::comma(max_points_per_sample)} cells/sample")
-    }
-
-    ## aspect.ratio (not coord_fixed) keeps tiles square while allowing the
-    ## free per-sample scales facet_wrap needs in this ggplot2 version.
-    ggplot2::ggplot(pd, ggplot2::aes(X, Y, color = Phenotyped)) +
-        ggplot2::geom_point(size = 0.3, alpha = 0.5) +
-        ggplot2::scale_color_manual(values = c(`TRUE` = "#2c7fb8", `FALSE` = "grey70")) +
-        ggplot2::scale_y_reverse() +
-        ggplot2::facet_wrap(~Sample, scales = "free") +
-        ggplot2::labs(
-            title = "Cell centroid spatial footprint",
-            subtitle = subtitle,
-            x = "X (px)", y = "Y (px)", color = "Phenotyped"
-        ) +
-        ggplot2::theme_minimal(base_size = 11) +
-        ggplot2::theme(
-            legend.position = "top",
-            aspect.ratio = 1,
-            axis.text = ggplot2::element_text(size = 6)
-        ) +
-        ggplot2::guides(color = ggplot2::guide_legend(override.aes = list(size = 2, alpha = 1)))
+    samples <- sort(unique(pd$Sample))
+    plots <- purrr::map(samples, function(sid) {
+        plot_spatial_footprint_one(
+            pd |> filter(Sample == sid), sid, point_alpha = point_alpha
+        )
+    })
+    purrr::set_names(plots, samples)
 }
 
 ## ---------------------------------------------------------------------------
@@ -467,17 +507,20 @@ plot_spatial_footprint <- function(obj, max_points_per_sample = 30000, seed = 10
 #' @param controlMarkers Markers treated as controls.
 #' @param n_max Max data rows to read per Halo file (default 100 for fast QC;
 #'   `Inf` for a full load).
-#' @param max_points_per_sample Down-sample cap for the spatial footprint plot.
+#' @param max_points_per_sample Down-sample cap for the spatial footprint plots.
+#' @param point_alpha Point transparency for the spatial footprint plots.
 #'
-#' @return A list with `tables` (named list of summary tibbles), `plots`
-#'   (named list of ggplot objects), `obj` (the combined loaded object), and
-#'   `meta` (scan metadata: timestamp, version, counts, n_max).
+#' @return A list with `tables` (named list of summary tibbles), `plots` (named
+#'   list of ggplot objects; `spatial_footprints` is itself a named list with
+#'   one plot per sample), `obj` (the combined loaded object), and `meta` (scan
+#'   metadata: timestamp, version, counts, n_max).
 #'
 #' @export
 scan_manifest <- function(manifest_csv, cache_rds = NULL, refresh = FALSE,
                           controlMarkers = c("DAPI"),
                           n_max = 100,
-                          max_points_per_sample = 30000) {
+                          max_points_per_sample = 30000,
+                          point_alpha = 0.4) {
 
     manifest <- read_manifest(manifest_csv)
 
@@ -508,7 +551,10 @@ scan_manifest <- function(manifest_csv, cache_rds = NULL, refresh = FALSE,
         cell_counts      = plot_cell_counts(cell_summary),
         marker_presence  = plot_marker_presence(presence_matrix),
         marker_heatmap   = plot_marker_heatmap(marker_summary),
-        spatial_footprint = plot_spatial_footprint(obj, max_points_per_sample)
+        ## one standalone spatial plot per sample (named list keyed by Sample)
+        spatial_footprints = plot_spatial_footprints(
+            obj, max_points_per_sample, point_alpha = point_alpha
+        )
     )
 
     meta <- list(

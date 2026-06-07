@@ -20,7 +20,8 @@
 ##   Halo_scan_overview.xlsx   manifest, cell counts, marker panel presence
 ##   Halo_scan_markers.xlsx    per-marker positivity (% and counts)
 ##   plots/*.png               cell counts, panel coverage, positivity heatmap,
-##                             spatial footprint
+##                             and one spatial footprint per sample
+##                             (spatial_<Sample>.png)
 ##   Halo_scan_report.html     self-contained report tying it together
 ##   cache/scan_obj.rds        cached combined loaded object
 ##
@@ -115,9 +116,16 @@ n_mark <- res$meta$n_markers
 plot_paths <- c(
     ggsave2("cell_counts.png",       res$plots$cell_counts,       7, max(3, 0.6 * n_samp + 1.5)),
     ggsave2("marker_presence.png",   res$plots$marker_presence,   max(5, 1.2 * n_samp + 2), max(5, 0.28 * n_mark + 1.5)),
-    ggsave2("marker_heatmap.png",    res$plots$marker_heatmap,    max(6, 1.4 * n_samp + 2.5), max(5, 0.30 * n_mark + 1.5)),
-    ggsave2("spatial_footprint.png", res$plots$spatial_footprint, max(7, 4 * n_samp), 5)
+    ggsave2("marker_heatmap.png",    res$plots$marker_heatmap,    max(6, 1.4 * n_samp + 2.5), max(5, 0.30 * n_mark + 1.5))
 )
+
+## one standalone spatial footprint PNG per sample. Sanitise the sample id for
+## a safe filename; coord_fixed makes these square, so use a square canvas.
+spatial_paths <- purrr::imap_chr(res$plots$spatial_footprints, function(p, sid) {
+    safe <- gsub("[^A-Za-z0-9._-]+", "_", sid)
+    ggsave2(sprintf("spatial_%s.png", safe), p, 7, 7)
+})
+plot_paths <- c(plot_paths, spatial_paths)
 
 ## ---- HTML report ----------------------------------------------------------
 rmd_src <- if (!is.na(this_file)) {

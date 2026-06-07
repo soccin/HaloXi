@@ -10,7 +10,8 @@ scan_manifest(
   refresh = FALSE,
   controlMarkers = c("DAPI"),
   n_max = 100,
-  max_points_per_sample = 30000
+  max_points_per_sample = 30000,
+  point_alpha = 0.4
 )
 }
 \arguments{
@@ -25,12 +26,15 @@ scan_manifest(
 \item{n_max}{Max data rows to read per Halo file (default 100 for fast QC;
 \code{Inf} for a full load).}
 
-\item{max_points_per_sample}{Down-sample cap for the spatial footprint plot.}
+\item{max_points_per_sample}{Down-sample cap for the spatial footprint plots.}
+
+\item{point_alpha}{Point transparency for the spatial footprint plots.}
 }
 \value{
-A list with \code{tables} (named list of summary tibbles), \code{plots}
-(named list of ggplot objects), \code{obj} (the combined loaded object), and
-\code{meta} (scan metadata: timestamp, version, counts, n_max).
+A list with \code{tables} (named list of summary tibbles), \code{plots} (named
+list of ggplot objects; \code{spatial_footprints} is itself a named list with
+one plot per sample), \code{obj} (the combined loaded object), and \code{meta} (scan
+metadata: timestamp, version, counts, n_max).
 }
 \description{
 Convenience wrapper that reads the manifest, scans marker panels from
