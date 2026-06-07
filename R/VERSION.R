@@ -1,1 +1,1 @@
-VERSION="HaloXi.v0.1.1"
+VERSION="HaloXi.v1.0.pre"

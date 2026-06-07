@@ -3,84 +3,111 @@
 #' @import purrr
 
 suppressPackageStartupMessages({
-    require(dplyr)
-    require(tidyr)
-    require(purrr)
+  require(dplyr)
+  require(tidyr)
+  require(purrr)
 })
 
 #' Load a Halo Object CSV file
 #'
-#' @param hfile Halo CSV file
-#' @param uuidCols Columns to use to compute cell UUID
-#' @param sampleName If string set SID, if function SID=sampleName(hfile)
-#' @param colsExtra Any extra columns to include
-#' @param markerMap Names vector to rename markers
-#' @param controlMarkers Markers to exclude from the MarkerPos phenotype (default DAPI)
-#' @param n_max Max data rows to read; use a small value (e.g. 100) for a fast QC scan (default Inf)
+#' Reads a Halo CSV and returns structured cell and marker data.
 #'
-#' @return A list with elements: cell.data, marker.data, and VERSION
+#' @param hfile Path to Halo CSV file.
+#' @param uuid_cols Column names used to compute cell UUID.
+#' @param sample_name Sample identifier: string or function(hfile) -> string.
+#'   If missing, derived from filename.
+#' @param colRenameMap Named vector for column renaming (optional).
+#' @param cols_extra Additional columns to include in cell.data.
+#' @param marker_map Named vector to rename markers (old = new).
+#' @param control_markers Markers to exclude from MarkerPos (default: "DAPI").
+#' @param n_max Max data rows to read; use a small value (e.g. 100) for a
+#'   fast QC scan (default Inf).
+#'
+#' @return A list with elements:
+#'   \item{cell.data}{Tibble with UUID, Sample, coordinates, and MarkerPos.}
+#'   \item{marker.data}{Tibble with UUID, Marker, and Positive status.}
+#'   \item{VERSION}{Package version string.}
 #'
 #' @export
-load_halo <- function(hfile,uuidCols,sampleName,colsExtra,markerMap,controlMarkers,n_max=Inf) {
+load_halo <- function(hfile, uuid_cols, sample_name,
+                      colRenameMap = NULL,
+                      cols_extra, marker_map,
+                      control_markers, n_max = Inf) {
 
+  if (missing(uuid_cols)) {
+    stop("\n\nFATAL ERROR::load_halo\nuuid_cols Missing\n")
+  }
 
-    if(missing(uuidCols)) {
-        stop("\n\nFATAL ERROR::tools.R::load_halo\nuuidCols Missing\n")
-    }
+  # Determine sample ID
+  if (missing(sample_name)) {
+    sid <- basename(hfile) |> gsub("\\.csv.*", "", x = _)
+  } else if (is.function(sample_name)) {
+    sid <- sample_name(hfile)
+  } else {
+    sid <- sample_name
+  }
 
-    if(missing(sampleName)) {
-        SID=basename(hfile) |> gsub("\\.csv.*","",x=_)
-    } else if(is.function(sampleName)) {
-        SID=sampleName(hfile)
-    } else {
-        SID=sampleName
-    }
+  dd <- read_halo(hfile, colRenameMap = colRenameMap, n_max = n_max) |>
+    mutate(Sample = sid)
+  dd$UUID <- generate_cell_uuid(dd, c("Sample", uuid_cols))
 
-    dd=read_halo(hfile,n_max=n_max) |> mutate(Sample=SID)
-    dd$UUID=generate_Cell_UUID(dd,uuidCols)
+  cell.data <- dd |>
+    select(UUID, Sample, XMin, XMax, YMin, YMax)
 
-    cell.data=dd |> select(UUID,Sample,XMin,XMax,YMin,YMax)
+  marker.data <- dd |>
+    select(UUID, matches("_Positive_Classification$")) |>
+    gather(Marker, Positive, -UUID) |>
+    mutate(Marker = gsub("_Positive_Classification$", "", Marker))
 
-    marker.data=dd |>
-        select(UUID,matches("_Positive_Classification$")) |>
-        gather(Marker,Positive,-UUID) |>
-        mutate(Marker=gsub("_Positive_Classification$","",Marker))
+  if (!missing(marker_map)) {
+    # Build complete mapping: user-provided + identity for unmapped markers
+    marker_map0 <- marker.data %>%
+      distinct(Marker) %>%
+      filter(!Marker %in% names(marker_map)) %>%
+      mutate(NewMarker = Marker) %>%
+      deframe()
+    marker_map <- c(marker_map, marker_map0)
+    marker.data$Marker <- marker_map[marker.data$Marker]
+    marker.data <- marker.data %>%
+      filter(!is.na(Marker))
+  }
 
-    if(!missing(markerMap)) {
-        marker.data$Marker=markerMap[marker.data$Marker]
-        marker.data=marker.data %>% filter(!is.na(Marker))
-    }
+  if (missing(control_markers)) {
+    control_markers <- c("DAPI")
+  }
 
-    if(missing(controlMarkers)) {
-        controlMarkers=c("DAPI")
-    }
+  marker.data <- marker.data |>
+    mutate(MarkerNorm = toupper(Marker))
 
-    marker.data = marker.data |>
-        mutate(MarkerNorm=toupper(Marker))
+  marker_pos <- marker.data |>
+    filter(!(Marker %in% control_markers)) |>
+    group_by(UUID) |>
+    summarize(
+      MarkerPos = paste0(sort(MarkerNorm[Positive == 1]), collapse = ";")
+    ) |>
+    ungroup()
 
-    markerPos=marker.data |>
-        filter(!(Marker %in% controlMarkers)) |>
-        group_by(UUID) |>
-        summarize(MarkerPos=paste0(sort(MarkerNorm[Positive==1]),collapse=";")) |>
-        ungroup()
+  cell.data <- left_join(cell.data, marker_pos)
 
-    cell.data=left_join(cell.data,markerPos)
+  if (!missing(cols_extra)) {
+    extra.data <- dd |>
+      select(UUID, all_of(cols_extra))
+    cell.data <- left_join(cell.data, extra.data)
+  }
 
-    if(!missing(colsExtra)) {
-        extra.data=dd %>% select(UUID,all_of(colsExtra))
-        cell.data=left_join(cell.data,extra.data)
-    }
-
-    obj=list(cell.data=cell.data,marker.data=marker.data,VERSION=VERSION)
-
-    obj
-
+  list(cell.data = cell.data, marker.data = marker.data, VERSION = VERSION)
 }
 
-generate_Cell_UUID <- function(dat,cols.UUID){
-    lapply(
-        transpose(dat[,cols.UUID]),
-        function(x){digest::digest(paste(x,collapse=";"),algo="sha1")}
-        ) |>
+#' Generate unique cell UUIDs
+#'
+#' Creates SHA1 hash from specified columns to uniquely identify cells.
+#'
+#' @param dat Dataframe containing the columns.
+#' @param cols_uuid Column names to use for UUID generation.
+#' @return Character vector of UUIDs.
+generate_cell_uuid <- function(dat, cols_uuid) {
+  dat[, cols_uuid] |>
+    transpose() |>
+    lapply(\(x) digest::digest(paste(x, collapse = ";"), algo = "sha1")) |>
     unlist()
 }

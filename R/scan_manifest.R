@@ -101,13 +101,8 @@ read_manifest <- function(manifest_csv) {
 #' @export
 scan_halo_markers <- function(manifest) {
 
-    fix_col_names <- function(ss) {
-        ## Halo files vary in encoding (UTF-8 vs Latin-1 for the um/squared
-        ## glyphs in area columns); sanitise to valid UTF-8 before regex work
-        ## so gsub does not error on non-marker columns.
-        ss <- enc2utf8(iconv(ss, from = "", to = "UTF-8", sub = "byte"))
-        gsub(" ", "_", ss) |> gsub("_\\(.*\\)$", "", x = _)
-    }
+    ## Column-name normalisation is shared with the loader: use the package's
+    ## fix_col_names() (defined in read_halo.R) so the two cannot drift.
 
     scan_one <- function(Sample, HaloFile, Exists, ...) {
         if (!Exists) {
@@ -210,9 +205,9 @@ load_manifest <- function(manifest, cache_rds = NULL, refresh = FALSE,
         message(glue::glue("load_manifest: loading {Sample}  <-  {fs::path_file(HaloFile)} (n_max={n_max})"))
         load_halo(
             HaloFile,
-            uuidCols = .HALO_UUID_COLS,
-            sampleName = Sample,
-            controlMarkers = controlMarkers,
+            uuid_cols = .HALO_UUID_COLS,
+            sample_name = Sample,
+            control_markers = controlMarkers,
             n_max = n_max
         )
     }

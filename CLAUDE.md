@@ -53,16 +53,19 @@ scripts/scan_data.R MANIFEST.csv [OUTDIR] [--refresh] [--rows=N | --full]
 Data flows in one direction; each stage is its own file in `R/`:
 
 1. **`read_halo.R`** — `read_halo()` reads one Halo CSV with `readr` and
-   normalises column names via `fixColNames()` (UTF-8 sanitise, spaces→`_`,
-   strip trailing `(...)` units). The same normalisation logic is duplicated
-   in `scan_halo_markers()`; **if you change column-name handling, change both.**
+   normalises column names via `fix_col_names()` (UTF-8 sanitise, spaces→`_`,
+   strip trailing `(...)` units, `%_` prefix → `_PCT` suffix). An optional
+   `colRenameMap` then applies canonical-name substitutions via
+   `normalize_name()`. `scan_halo_markers()` reuses this same `fix_col_names()`
+   (no longer a private copy) so the two cannot drift.
 
 2. **`load_halo.R`** — `load_halo()` is the core per-file loader. It splits a
    Halo file into three things returned as a list: `cell.data` (one row per
-   cell, with a SHA1 `UUID` from `uuidCols`), `marker.data` (long: one row per
-   cell × marker, from `*_Positive_Classification` columns), and `VERSION`.
-   It also computes the `MarkerPos` phenotype string per cell (sorted,
-   `;`-joined positive non-control markers). `controlMarkers` default `DAPI`.
+   cell, with a SHA1 `UUID` from `generate_cell_uuid()`), `marker.data` (long:
+   one row per cell × marker, from `*_Positive_Classification` columns), and
+   `VERSION`. It also computes the `MarkerPos` phenotype string per cell
+   (sorted, `;`-joined positive non-control markers). `control_markers` default
+   `DAPI`; `n_max` caps rows read for fast QC.
 
 3. **`scan_manifest.R`** — the orchestration layer (most of the package). Key
    pieces:
@@ -91,7 +94,9 @@ bump it together with the `Version:` field in `DESCRIPTION`.
 ### Conventions specific to this code
 
 - Sample identity flows through a `Sample` column everywhere; cells are keyed
-  by `UUID` (SHA1 of `Image_Location` + bounding box, see `.HALO_UUID_COLS`).
+  by `UUID` (SHA1 of `Sample` + `Image_Location` + bounding box; the bbox/
+  location columns are in `.HALO_UUID_COLS` and `load_halo()` prepends
+  `Sample` so UUIDs are unique across samples).
 - Marker names appear both raw (`Marker`) and upper-cased (`MarkerNorm`);
   matrices and control checks use `MarkerNorm`.
 - In presence/positivity matrices, a blank/`NA` cell means "marker absent from
