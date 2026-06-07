@@ -88,6 +88,10 @@ Data flows in one direction; each stage is its own file in `R/`:
    wires `scan_manifest()` → workbooks → PNGs → HTML report. `scripts/` and
    `attic/` are excluded from the package build via `.Rbuildignore`.
 
+`R/schema_summary.R` is a standalone exported helper outside the pipeline:
+`schema_summary(df)` returns a per-column tibble (class, `n_unique`, `n_na`,
+`all_na`) for quick QC of any dataframe.
+
 `R/VERSION.R` defines the `VERSION` string stamped into every returned object;
 bump it together with the `Version:` field in `DESCRIPTION`.
 
@@ -103,6 +107,15 @@ bump it together with the `Version:` field in `DESCRIPTION`.
   that sample's panel" — distinct from "present but 0% positive".
 - `attic/` holds the older v20 code this package replaces; do not edit or
   import from it.
+
+### Branch model
+
+`devs` and `devs-claude` are two intentionally separate long-lived lines, not
+a feature branch waiting to be merged. They are kept distinct so `devs-claude`
+can carry per-project variance that is deliberately NOT mergeable back (some
+samples need loader/UUID behavior the shared `devs` line cannot adopt). They
+are currently in sync, but do not assume one should be merged into the other —
+ask before reconciling them. `main` is the release line.
 
 ## Tidyverse style
 
