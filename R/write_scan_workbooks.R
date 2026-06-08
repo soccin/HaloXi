@@ -254,3 +254,45 @@ write_scan_workbooks <- function(tables, outdir) {
 
     invisible(paths)
 }
+
+#' Write the cell-annotation Excel workbook
+#'
+#' One collaborator workbook (`Cell_annotation.xlsx`) with the cell-type
+#' composition (long + wide count matrix) and the sub-state breakdown. Reuses
+#' the scanner's [add_scan_sheet()] styling.
+#'
+#' @param ct_summary The list from [summarize_celltypes()] (`long` + `wide`).
+#' @param state_summary Long tibble from [summarize_states()].
+#' @param outdir Directory to write the workbook into (created if needed).
+#'
+#' @return The workbook path written (invisibly).
+#'
+#' @export
+write_annotation_workbook <- function(ct_summary, state_summary, outdir) {
+
+    fs::dir_create(outdir)
+    wb <- openxlsx::createWorkbook()
+
+    add_scan_sheet(
+        wb, "Composition (counts)", ct_summary$wide,
+        title = "Cell-type counts per sample (UNKNOWN = conflict, UNCLASSIFIED = no lineage marker)",
+        numfmt = stats::setNames(
+            as.list(rep("#,##0", ncol(ct_summary$wide) - 1)),
+            setdiff(names(ct_summary$wide), "CellType")
+        )
+    )
+    add_scan_sheet(
+        wb, "Composition (long)", ct_summary$long,
+        title = "Cell-type composition per sample (long, with %)",
+        numfmt = list(nCells = "#,##0", pct = "0.00")
+    )
+    add_scan_sheet(
+        wb, "States", state_summary,
+        title = "Sub-state positivity (nScored = parent cells with a callable flag; blank pctPos = un-callable)",
+        numfmt = list(nScored = "#,##0", nPos = "#,##0", pctPos = "0.00")
+    )
+
+    p <- fs::path(outdir, "Cell_annotation.xlsx")
+    openxlsx::saveWorkbook(wb, p, overwrite = TRUE)
+    invisible(p)
+}

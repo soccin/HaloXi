@@ -1,6 +1,6 @@
 Package: HaloXi
 Title: Tools for processing Halo object files
-Version: 1.0.pre
+Version: 1.1.pre
 Authors@R: 
     person("N.", "Socci", , "soccin@mskcc.org", role = c("aut", "cre"))
 Description: Lightweight (hopefully) scripts to process Halo files.
@@ -13,14 +13,16 @@ Imports:
     digest,
     fs,
     glue,
-    readr
+    readr,
+    yaml
 Suggests:
     ggplot2,
     scales,
     forcats,
     openxlsx,
     rmarkdown,
-    knitr
+    knitr,
+    tibble
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
