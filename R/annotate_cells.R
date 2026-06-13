@@ -151,13 +151,21 @@ marker_pos_wide <- function(obj, rules) {
         left_join(obj$cell.data |> select(UUID, Sample), by = "UUID") |>
         distinct(Sample, MarkerNorm)
 
-    ## long positivity, friendly-named, restricted to rule markers
+    ## long positivity, friendly-named, restricted to rule markers. Some markers
+    ## occur as several data channels collapsed to one name (e.g. DAPI2/DAPI3/DAP
+    ## -> DAPI), giving multiple rows per (UUID, Friendly); collapse them with a
+    ## three-valued ANY (positive if any channel is positive) so the pivot yields
+    ## a single logical per cell, not a list-column.
     long_pos <- obj$marker.data |>
         left_join(obj$cell.data |> select(UUID, Sample), by = "UUID") |>
         mutate(MarkerNorm = toupper(MarkerNorm)) |>
         inner_join(map_tbl, by = "MarkerNorm") |>
         mutate(Pos = Positive == 1) |>
-        select(UUID, Sample, Friendly, Pos)
+        group_by(UUID, Sample, Friendly) |>
+        summarize(Pos = if (any(Pos, na.rm = TRUE)) TRUE
+                        else if (all(is.na(Pos))) NA
+                        else FALSE,
+                  .groups = "drop")
 
     wide <- long_pos |>
         pivot_wider(names_from = Friendly, values_from = Pos)
