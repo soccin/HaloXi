@@ -22,7 +22,9 @@ suppressPackageStartupMessages({
 #' @param control_markers Markers to exclude from MarkerPos (default: "DAPI").
 #'
 #' @return A list with elements:
-#'   \item{cell.data}{Tibble with UUID, Sample, coordinates, and MarkerPos.}
+#'   \item{cell.data}{Tibble with UUID, Sample, coordinates, and MarkerPos.
+#'     Also includes Analysis_Region and/or Classifier_Label when present in
+#'     the source file.}
 #'   \item{marker.data}{Tibble with UUID, Marker, and Positive status.}
 #'   \item{VERSION}{Package version string.}
 #'
@@ -50,7 +52,8 @@ load_halo <- function(hfile, uuid_cols, sample_name,
   dd$UUID <- generate_cell_uuid(dd, c("Sample", uuid_cols))
 
   cell.data <- dd |>
-    select(UUID, Sample, XMin, XMax, YMin, YMax)
+    select(UUID, Sample, XMin, XMax, YMin, YMax,
+           any_of(c("Analysis_Region", "Classifier_Label")))
 
   marker.data <- dd |>
     select(UUID, matches("_Positive_Classification$")) |>

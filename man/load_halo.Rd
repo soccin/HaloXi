@@ -4,7 +4,15 @@
 \alias{load_halo}
 \title{Load a Halo Object CSV file}
 \usage{
-load_halo(hfile, uuid_cols, sample_name, cols_extra, marker_map, control_markers)
+load_halo(
+  hfile,
+  uuid_cols,
+  sample_name,
+  colRenameMap = NULL,
+  cols_extra,
+  marker_map,
+  control_markers
+)
 }
 \arguments{
 \item{hfile}{Path to Halo CSV file.}
@@ -14,6 +22,8 @@ load_halo(hfile, uuid_cols, sample_name, cols_extra, marker_map, control_markers
 \item{sample_name}{Sample identifier: string or function(hfile) -> string.
 If missing, derived from filename.}
 
+\item{colRenameMap}{Named vector for column renaming (optional).}
+
 \item{cols_extra}{Additional columns to include in cell.data.}
 
 \item{marker_map}{Named vector to rename markers (old = new).}
@@ -22,7 +32,9 @@ If missing, derived from filename.}
 }
 \value{
 A list with elements:
-\item{cell.data}{Tibble with UUID, Sample, coordinates, and MarkerPos.}
+\item{cell.data}{Tibble with UUID, Sample, coordinates, and MarkerPos.
+Also includes Analysis_Region and/or Classifier_Label when present in
+the source file.}
 \item{marker.data}{Tibble with UUID, Marker, and Positive status.}
 \item{VERSION}{Package version string.}
 }
