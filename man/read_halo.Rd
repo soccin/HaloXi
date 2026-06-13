@@ -4,10 +4,12 @@
 \alias{read_halo}
 \title{Read a Halo CSV file}
 \usage{
-read_halo(file, ...)
+read_halo(file, colRenameMap = NULL, ...)
 }
 \arguments{
 \item{file}{Path to CSV file.}
+
+\item{colRenameMap}{Optional named list for normalizing column names.}
 
 \item{...}{Additional arguments passed to readr::read_csv().}
 }
