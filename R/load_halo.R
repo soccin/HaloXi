@@ -85,7 +85,7 @@ load_halo <- function(hfile, uuid_cols, sample_name,
     ) |>
     ungroup()
 
-  cell.data <- left_join(cell.data, marker_pos)
+  cell.data <- left_join(cell.data, marker_pos,by = join_by(UUID))
 
   if (!missing(cols_extra)) {
     extra.data <- dd |>
