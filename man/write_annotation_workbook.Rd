@@ -4,7 +4,12 @@
 \alias{write_annotation_workbook}
 \title{Write the cell-annotation Excel workbook}
 \usage{
-write_annotation_workbook(ct_summary, state_summary, outdir)
+write_annotation_workbook(
+  ct_summary,
+  state_summary,
+  outdir,
+  subtype_summary = NULL
+)
 }
 \arguments{
 \item{ct_summary}{The list from \code{\link[=summarize_celltypes]{summarize_celltypes()}} (\code{long} + \code{wide}).}
@@ -12,6 +17,10 @@ write_annotation_workbook(ct_summary, state_summary, outdir)
 \item{state_summary}{Long tibble from \code{\link[=summarize_states]{summarize_states()}}.}
 
 \item{outdir}{Directory to write the workbook into (created if needed).}
+
+\item{subtype_summary}{Optional list from \code{\link[=summarize_subtypes]{summarize_subtypes()}} (\code{long} +
+\code{wide}). When supplied, two subtype sheets are added; default \code{NULL} keeps
+the original three-sheet workbook.}
 }
 \value{
 The workbook path written (invisibly).

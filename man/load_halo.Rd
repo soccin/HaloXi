@@ -11,7 +11,8 @@ load_halo(
   colRenameMap = NULL,
   cols_extra,
   marker_map,
-  control_markers
+  control_markers,
+  n_max = Inf
 )
 }
 \arguments{
@@ -29,6 +30,9 @@ If missing, derived from filename.}
 \item{marker_map}{Named vector to rename markers (old = new).}
 
 \item{control_markers}{Markers to exclude from MarkerPos (default: "DAPI").}
+
+\item{n_max}{Max data rows to read; use a small value (e.g. 100) for a
+fast QC scan (default Inf).}
 }
 \value{
 A list with elements:

@@ -71,6 +71,10 @@ read_cell_rules <- function(path) {
         purrr::map(rules$states, function(parent) {
             purrr::map(parent, ~ .x$pos)
         }),
+        ## subtypes: ordered {name, require_pos, require_neg} rules per parent
+        purrr::map(rules$subtypes, function(parent_rules) {
+            purrr::map(parent_rules, ~ c(.x$require_pos, .x$require_neg))
+        }),
         list(rules$exhaustion$any_pos),
         list(rules$controls)
     ) |> unlist() |> unique()
@@ -82,6 +86,30 @@ read_cell_rules <- function(path) {
             "read_cell_rules: rule(s) reference undeclared marker(s): ",
             "{paste(undeclared, collapse=', ')}"
         ))
+    }
+
+    ## subtypes is optional. When present: every parent key must be a declared
+    ## lineage, and subtype names must be unique across all parents (they become
+    ## the levels of a single Subtype factor).
+    if (!is.null(rules$subtypes)) {
+        bad_parents <- setdiff(names(rules$subtypes), names(rules$lineages))
+        if (length(bad_parents) > 0) {
+            stop(glue::glue(
+                "read_cell_rules: subtypes parent(s) are not declared lineages: ",
+                "{paste(bad_parents, collapse=', ')}"
+            ))
+        }
+        sub_names <- purrr::map(rules$subtypes, function(parent_rules) {
+            purrr::map_chr(parent_rules, "name")
+        }) |> unlist(use.names = FALSE)
+        dup <- sub_names[duplicated(sub_names)]
+        if (length(dup) > 0) {
+            stop(glue::glue(
+                "read_cell_rules: duplicated subtype name(s): ",
+                "{paste(unique(dup), collapse=', ')}"
+            ))
+        }
+        rules$subtype_levels <- sub_names
     }
 
     rules$marker_levels <- declared
@@ -242,6 +270,77 @@ annotate_lineage <- function(wide, rules) {
     out
 }
 
+#' Assign a mutually-exclusive sub-type within a resolved cell type
+#'
+#' For each parent lineage that has a `subtypes:` block, evaluates the parent's
+#' ordered list of `{name, require_pos, require_neg}` rules with three-valued
+#' logic and assigns the **first definitely-matching** rule's name. This is the
+#' hierarchical layer the flat `lineages`/`states` model cannot express: within
+#' an already-resolved parent, a cell gets exactly one subtype.
+#'
+#' Resolution per cell of a parent with subtypes:
+#' \itemize{
+#'   \item the first rule whose `require_pos`/`require_neg` definitely hold -> its name;
+#'   \item no rule definitely holds but at least one is un-callable (a needed
+#'         marker absent from the sample) -> `NA` (the lineage call is unaffected);
+#'   \item no rule holds and all are callable -> the parent's `fallthrough` name
+#'         if given, else `NA` (an intentionally incomplete partition).
+#' }
+#' Cells whose `cell_type` is not a parent with subtypes (including UNKNOWN /
+#' UNCLASSIFIED / NA, and lineages without a `subtypes:` block) get `NA`.
+#'
+#' @param wide Wide cell x marker logical table from [marker_pos_wide()].
+#' @param cell_type Character vector of resolved cell types (from
+#'   [annotate_lineage()]), aligned row-wise to `wide`.
+#' @param rules Parsed rules from [read_cell_rules()].
+#'
+#' @return A character vector of subtype names, one per row of `wide`; `NA`
+#'   where un-callable or the cell's parent has no subtypes.
+#'
+#' @export
+annotate_subtype <- function(wide, cell_type, rules) {
+
+    out <- rep(NA_character_, nrow(wide))
+    if (is.null(rules$subtypes)) return(out)
+
+    for (parent in names(rules$subtypes)) {
+        is_parent <- cell_type == parent & !is.na(cell_type)
+        if (!any(is_parent)) next
+
+        parent_rules <- rules$subtypes[[parent]]
+        rule_names <- purrr::map_chr(parent_rules, "name")
+        fallthrough <- attr(parent_rules, "fallthrough") %||%
+            rules$subtypes[[parent]]$fallthrough  # tolerate either spelling
+
+        ## three-valued match per rule (TRUE / FALSE / NA), only over parent cells
+        match_mat <- vapply(parent_rules, function(rule) {
+            pos_ok <- .all_true(wide, rule$require_pos)
+            neg_ok <- .all_false(wide, rule$require_neg)
+            pos_ok & neg_ok
+        }, logical(nrow(wide)))
+        if (is.null(dim(match_mat))) match_mat <- matrix(match_mat, nrow = nrow(wide))
+
+        ## first definite TRUE wins; else NA if any rule un-callable; else
+        ## fallthrough (or NA). Resolve only the parent's cells.
+        idx <- which(is_parent)
+        sub <- vapply(idx, function(i) {
+            r <- match_mat[i, ]
+            w <- which(r == TRUE)
+            if (length(w) >= 1) {
+                rule_names[w[1]]
+            } else if (any(is.na(r))) {
+                NA_character_
+            } else if (!is.null(fallthrough)) {
+                fallthrough
+            } else {
+                NA_character_
+            }
+        }, character(1))
+        out[idx] <- sub
+    }
+    out
+}
+
 #' Compute parent-gated sub-state flags for every cell
 #'
 #' For each parent lineage in `rules$states`, sets each state's boolean flag
@@ -320,6 +419,7 @@ annotate_cells <- function(obj, rules) {
     wide <- marker_pos_wide(obj, rules)
 
     cell_type <- annotate_lineage(wide, rules)
+    subtype <- annotate_subtype(wide, cell_type, rules)
     states <- annotate_states(wide, cell_type, rules)
 
     type_levels <- c(names(rules$lineages),
@@ -335,7 +435,17 @@ annotate_cells <- function(obj, rules) {
 
     annot <- wide |>
         select(UUID) |>
-        mutate(CellType = factor(cell_type, levels = type_levels)) |>
+        mutate(CellType = factor(cell_type, levels = type_levels))
+
+    ## Subtype: a mutually-exclusive sub-label within a parent (NA elsewhere).
+    ## Only added when the rules declare subtypes. Levels are the declared
+    ## subtype names in declaration order.
+    if (!is.null(rules$subtypes)) {
+        annot <- annot |>
+            mutate(Subtype = factor(subtype, levels = unique(rules$subtype_levels)))
+    }
+
+    annot <- annot |>
         bind_cols(states) |>
         mutate(CellState = cell_state)
 
@@ -344,6 +454,7 @@ annotate_cells <- function(obj, rules) {
 
     obj$rules_path <- rules$rules_path
     obj$annot_state_cols <- state_cols
+    obj$annot_subtype_parents <- names(rules$subtypes)
     obj$VERSION <- VERSION
     obj
 }
@@ -419,4 +530,60 @@ summarize_states <- function(obj) {
     }) |>
         purrr::list_rbind() |>
         arrange(State, Sample)
+}
+
+#' Per-sample mutually-exclusive sub-type composition
+#'
+#' Counts, per sample, the cells of each parent lineage that fall into each
+#' sub-type, with the proportion of the parent (`pctOfParent`) and of all cells
+#' in the sample (`pctOfAll`). Un-callable subtypes (a needed marker absent from
+#' the sample) are reported under `"(NA / un-callable)"` so a missing marker is
+#' never mistaken for a real zero.
+#'
+#' @param obj An annotated object from [annotate_cells()] whose rules declared
+#'   `subtypes:`. If no subtypes were assigned, returns empty tables.
+#'
+#' @return A list with `long` (`Sample`, `CellType`, `Subtype`, `nCells`,
+#'   `pctOfParent`, `pctOfAll`) and `wide` (Subtype x Sample count matrix).
+#'
+#' @export
+summarize_subtypes <- function(obj) {
+
+    parents <- obj$annot_subtype_parents
+    cd <- obj$cell.data
+
+    if (is.null(parents) || !"Subtype" %in% names(cd)) {
+        empty <- tibble::tibble(
+            Sample = character(), CellType = character(), Subtype = character(),
+            nCells = integer(), pctOfParent = double(), pctOfAll = double()
+        )
+        return(list(long = empty, wide = empty))
+    }
+
+    ## per-sample total cells (denominator for pctOfAll)
+    sample_tot <- cd |> count(Sample, name = "nSample")
+
+    long <- cd |>
+        filter(CellType %in% parents) |>
+        mutate(
+            CellType = as.character(CellType),
+            Subtype = forcats::fct_na_value_to_level(Subtype, "(NA / un-callable)")
+        ) |>
+        count(Sample, CellType, Subtype, name = "nCells") |>
+        group_by(Sample, CellType) |>
+        mutate(pctOfParent = round(100 * nCells / sum(nCells), 2)) |>
+        ungroup() |>
+        left_join(sample_tot, by = "Sample") |>
+        mutate(pctOfAll = round(100 * nCells / nSample, 2)) |>
+        select(Sample, CellType, Subtype, nCells, pctOfParent, pctOfAll) |>
+        arrange(Sample, CellType, desc(nCells))
+
+    wide <- long |>
+        select(Sample, Subtype, nCells) |>
+        group_by(Sample, Subtype) |>
+        summarize(nCells = sum(nCells), .groups = "drop") |>
+        pivot_wider(names_from = Sample, values_from = nCells, values_fill = 0) |>
+        arrange(desc(rowSums(across(where(is.numeric)))))
+
+    list(long = long, wide = wide)
 }

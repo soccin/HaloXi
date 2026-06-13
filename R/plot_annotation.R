@@ -142,3 +142,77 @@ plot_tumor_states <- function(state_summary) {
         ggplot2::theme_minimal(base_size = 12) +
         ggplot2::theme(legend.position = "top")
 }
+
+## a palette for mutually-exclusive subtypes: a categorical hue per subtype, the
+## un-callable bucket greyed. Falls back to a Set2-style ramp for any extra.
+.subtype_palette <- function(levels) {
+    base <- c(
+        "#1b9e77", "#d95f02", "#7570b3", "#e7298a",
+        "#66a61e", "#e6ab02", "#a6761d", "#386cb0",
+        "#f0027f", "#bf5b17"
+    )
+    na_lab <- "(NA / un-callable)"
+    real <- setdiff(levels, na_lab)
+    pal <- stats::setNames(rep_len(base, length(real)), real)
+    if (na_lab %in% levels) pal <- c(pal, stats::setNames("grey90", na_lab))
+    pal[levels]
+}
+
+#' Stacked bar of mutually-exclusive subtype composition within one parent type
+#'
+#' Shows, per group (sample, TMA block, ...), how the cells of a single parent
+#' lineage split across its subtypes. Subtypes are mutually exclusive, so the
+#' bars partition the parent's cells. The `(NA / un-callable)` bucket is greyed.
+#'
+#' @param subtype_summary The `long` tibble from [summarize_subtypes()] (or that
+#'   list), with columns `CellType`, `Subtype`, `nCells`, and the grouping column.
+#' @param parent The parent `CellType` to plot (e.g. "CD8 T cell").
+#' @param group Name of the grouping column to put on the axis (default
+#'   "Sample"). The summary must already be aggregated to this grouping.
+#' @param percent If TRUE, bars are scaled to 100% within each group.
+#'
+#' @return A ggplot object, or `NULL` if the parent has no cells.
+#' @export
+plot_subtype_composition <- function(subtype_summary, parent,
+                                     group = "Sample", percent = FALSE) {
+
+    long <- if (is.list(subtype_summary) && !is.data.frame(subtype_summary)) {
+        subtype_summary$long
+    } else {
+        subtype_summary
+    }
+
+    pd <- long |> dplyr::filter(CellType == parent)
+    if (nrow(pd) == 0) return(NULL)
+
+    ## aggregate to the requested grouping (in case the summary is finer)
+    pd <- pd |>
+        dplyr::group_by(.data[[group]], Subtype) |>
+        dplyr::summarize(nCells = sum(nCells), .groups = "drop_last") |>
+        dplyr::mutate(pct = 100 * nCells / sum(nCells)) |>
+        dplyr::ungroup()
+
+    sub_levels <- levels(factor(pd$Subtype))
+    pal <- .subtype_palette(sub_levels)
+
+    y_lab <- if (percent) "% of parent cells" else "Number of cells"
+
+    ggplot2::ggplot(pd, ggplot2::aes(.data[[group]],
+                                     if (percent) pct else nCells,
+                                     fill = Subtype)) +
+        ggplot2::geom_col(width = 0.7) +
+        ggplot2::scale_fill_manual(values = pal) +
+        { if (percent)
+            ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.02)))
+          else
+            ggplot2::scale_y_continuous(labels = scales::comma,
+                                        expand = ggplot2::expansion(mult = c(0, 0.05))) } +
+        ggplot2::coord_flip() +
+        ggplot2::labs(
+            title = glue::glue("{parent} subtype composition"),
+            subtitle = "Mutually exclusive subtypes; grey = un-callable (marker absent)",
+            x = NULL, y = y_lab, fill = NULL
+        ) +
+        ggplot2::theme_minimal(base_size = 12) +
+        ggplot2::theme(legend.position = "right")
+}

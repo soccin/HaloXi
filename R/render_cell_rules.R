@@ -106,6 +106,28 @@ rules_md_lines <- function(rules) {
         "types is labeled ", rules$labels$unknown, ".")
     blank()
 
+    ## ---- subtypes (mutually exclusive within a cell type) ------------------
+    if (length(rules$subtypes)) {
+        add("## Subtypes (exactly one within a cell type)")
+        blank()
+        add("Once a cell's main type is settled, it is given **one** subtype ",
+            "from the list for that type. The rules are checked in order and the ",
+            "first that fits wins; if a needed marker was not measured the ",
+            "subtype is left blank (un-callable), but the main type still stands.")
+        blank()
+        for (parent in names(rules$subtypes)) {
+            add("### Within ", parent)
+            blank()
+            add("| Subtype | Requires |")
+            add("|---|---|")
+            for (rule in rules$subtypes[[parent]]) {
+                add("| ", rule$name, " | ",
+                    .fmt_requirement(rule$require_pos, rule$require_neg), " |")
+            }
+            blank()
+        }
+    }
+
     ## ---- states -----------------------------------------------------------
     add("## States (only assigned within the matching cell type)")
     blank()
@@ -170,6 +192,12 @@ rules_md_lines <- function(rules) {
         r <- rules$lineages[[lin]]
         if (length(r$require_pos)) note(r$require_pos, glue::glue("{lin} (+)"))
         if (length(r$require_neg)) note(r$require_neg, glue::glue("{lin} (-)"))
+    }
+    for (parent in names(rules$subtypes)) {
+        for (rule in rules$subtypes[[parent]]) {
+            if (length(rule$require_pos)) note(rule$require_pos, glue::glue("{parent}:{rule$name} (+)"))
+            if (length(rule$require_neg)) note(rule$require_neg, glue::glue("{parent}:{rule$name} (-)"))
+        }
     }
     for (parent in names(rules$states)) {
         for (st in names(rules$states[[parent]])) {

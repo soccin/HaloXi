@@ -264,11 +264,15 @@ write_scan_workbooks <- function(tables, outdir) {
 #' @param ct_summary The list from [summarize_celltypes()] (`long` + `wide`).
 #' @param state_summary Long tibble from [summarize_states()].
 #' @param outdir Directory to write the workbook into (created if needed).
+#' @param subtype_summary Optional list from [summarize_subtypes()] (`long` +
+#'   `wide`). When supplied, two subtype sheets are added; default `NULL` keeps
+#'   the original three-sheet workbook.
 #'
 #' @return The workbook path written (invisibly).
 #'
 #' @export
-write_annotation_workbook <- function(ct_summary, state_summary, outdir) {
+write_annotation_workbook <- function(ct_summary, state_summary, outdir,
+                                      subtype_summary = NULL) {
 
     fs::dir_create(outdir)
     wb <- openxlsx::createWorkbook()
@@ -286,6 +290,23 @@ write_annotation_workbook <- function(ct_summary, state_summary, outdir) {
         title = "Cell-type composition per sample (long, with %)",
         numfmt = list(nCells = "#,##0", pct = "0.00")
     )
+
+    if (!is.null(subtype_summary) && nrow(subtype_summary$long) > 0) {
+        add_scan_sheet(
+            wb, "Subtypes (counts)", subtype_summary$wide,
+            title = "Mutually-exclusive subtype counts per sample",
+            numfmt = stats::setNames(
+                as.list(rep("#,##0", ncol(subtype_summary$wide) - 1)),
+                setdiff(names(subtype_summary$wide), "Subtype")
+            )
+        )
+        add_scan_sheet(
+            wb, "Subtypes (long)", subtype_summary$long,
+            title = "Subtype composition per sample (% of parent and of all cells)",
+            numfmt = list(nCells = "#,##0", pctOfParent = "0.00", pctOfAll = "0.00")
+        )
+    }
+
     add_scan_sheet(
         wb, "States", state_summary,
         title = "Sub-state positivity (nScored = parent cells with a callable flag; blank pctPos = un-callable)",
