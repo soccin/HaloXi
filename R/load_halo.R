@@ -20,6 +20,8 @@ suppressPackageStartupMessages({
 #' @param cols_extra Additional columns to include in cell.data.
 #' @param marker_map Named vector to rename markers (old = new).
 #' @param control_markers Markers to exclude from MarkerPos (default: "DAPI").
+#' @param n_max Max data rows to read; use a small value (e.g. 100) for a
+#'   fast QC scan (default Inf).
 #'
 #' @return A list with elements:
 #'   \item{cell.data}{Tibble with UUID, Sample, coordinates, and MarkerPos.
@@ -32,7 +34,7 @@ suppressPackageStartupMessages({
 load_halo <- function(hfile, uuid_cols, sample_name,
                       colRenameMap = NULL,
                       cols_extra, marker_map,
-                      control_markers) {
+                      control_markers, n_max = Inf) {
 
   if (missing(uuid_cols)) {
     stop("\n\nFATAL ERROR::load_halo\nuuid_cols Missing\n")
@@ -47,7 +49,7 @@ load_halo <- function(hfile, uuid_cols, sample_name,
     sid <- sample_name
   }
 
-  dd <- read_halo(hfile, colRenameMap = colRenameMap) |>
+  dd <- read_halo(hfile, colRenameMap = colRenameMap, n_max = n_max) |>
     mutate(Sample = sid)
   dd$UUID <- generate_cell_uuid(dd, c("Sample", uuid_cols))
 

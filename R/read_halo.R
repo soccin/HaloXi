@@ -26,6 +26,10 @@ read_halo <- function(file, colRenameMap = NULL, ...) {
 #' @param col_names Character vector of column names.
 #' @return Cleaned column names.
 fix_col_names <- function(col_names) {
+  # Halo exports vary in encoding (some use Latin-1 for the um/squared glyphs
+  # in the area columns), which breaks gsub's UTF-8 handling; sanitise to
+  # valid UTF-8 first.
+  col_names <- enc2utf8(iconv(col_names, from = "", to = "UTF-8", sub = "byte"))
   col_names |>
     gsub(" ", "_", x = _) |>
     gsub("_\\(.*\\)$", "", x = _) |>
