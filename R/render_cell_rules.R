@@ -13,10 +13,18 @@
 ## small null-coalescing helper (avoids importing rlang's %||% at package load)
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
-## format a +/- marker requirement list as plain text, e.g. "CD3+ and CD20-"
-.fmt_requirement <- function(pos = character(), neg = character()) {
+## format a +/- marker requirement list as plain text, e.g. "CD3+ and CD20-".
+## `any` is an OR group: rendered "(A+ or B+)" and ANDed with the rest, e.g.
+## "(CD30+ or TYK2+)".
+.fmt_requirement <- function(pos = character(), neg = character(),
+                             any = character()) {
+    any_grp <- if (length(any)) {
+        grp <- paste(paste0(any, "+"), collapse = " or ")
+        if (length(any) > 1) paste0("(", grp, ")") else grp
+    }
     parts <- c(
         if (length(pos)) paste0(pos, "+"),
+        any_grp,
         if (length(neg)) paste0(neg, "-")
     )
     if (length(parts) == 0) return("(no marker requirement)")
@@ -99,7 +107,8 @@ rules_md_lines <- function(rules) {
     blank()
     for (lin in names(rules$lineages)) {
         r <- rules$lineages[[lin]]
-        add("- **", lin, "**: ", .fmt_requirement(r$require_pos, r$require_neg))
+        add("- **", lin, "**: ",
+            .fmt_requirement(r$require_pos, r$require_neg, r$any_pos))
     }
     blank()
     add("A cell positive for the defining markers of two or more of these ",
@@ -170,6 +179,7 @@ rules_md_lines <- function(rules) {
         r <- rules$lineages[[lin]]
         if (length(r$require_pos)) note(r$require_pos, glue::glue("{lin} (+)"))
         if (length(r$require_neg)) note(r$require_neg, glue::glue("{lin} (-)"))
+        if (length(r$any_pos)) note(r$any_pos, glue::glue("{lin} (+, any)"))
     }
     for (parent in names(rules$states)) {
         for (st in names(rules$states[[parent]])) {

@@ -67,7 +67,7 @@ read_cell_rules <- function(path) {
 
     ## every marker referenced anywhere must be declared in markers:
     referenced <- c(
-        purrr::map(rules$lineages, ~ c(.x$require_pos, .x$require_neg)),
+        purrr::map(rules$lineages, ~ c(.x$require_pos, .x$require_neg, .x$any_pos)),
         purrr::map(rules$states, function(parent) {
             purrr::map(parent, ~ .x$pos)
         }),
@@ -189,8 +189,11 @@ marker_pos_wide <- function(obj, rules) {
 
 #' Assign a top-level cell type (lineage) to each cell
 #'
-#' Evaluates every lineage's `require_pos` / `require_neg` rule with three-valued
-#' logic, then resolves per cell:
+#' Evaluates every lineage's `require_pos` / `require_neg` (and optional
+#' `any_pos`) rule with three-valued logic, then resolves per cell.
+#' `require_pos` markers must ALL be positive; `require_neg` markers must ALL be
+#' negative; if `any_pos` is given, at least ONE of those markers must also be
+#' positive. The per-cell resolution is then:
 #' \itemize{
 #'   \item >1 lineage definitely matched -> `UNKNOWN` (conflict)
 #'   \item exactly 1 matched             -> that lineage
@@ -211,10 +214,15 @@ annotate_lineage <- function(wide, rules) {
 
     ## per-lineage three-valued match for every cell
     match_mat <- purrr::map(rules$lineages, function(rule) {
-        pos_ok <- .all_true(wide, rule$require_pos)
-        neg_ok <- .all_false(wide, rule$require_neg)
-        ## both must hold; combine with three-valued AND
+        pos_ok <- .all_true(wide, rule$require_pos)   # ALL of require_pos (AND)
+        neg_ok <- .all_false(wide, rule$require_neg)  # ALL of require_neg negative
         res <- pos_ok & neg_ok
+        ## optional ANY-of clause: lineage also needs >=1 of any_pos positive.
+        ## Only applied when the rule supplies it (absent -> no constraint), so
+        ## existing require_pos-only lineages are unaffected.
+        if (length(rule$any_pos) > 0) {
+            res <- res & .any_true(wide, rule$any_pos)
+        }
         res
     })
     match_df <- as.data.frame(match_mat, optional = TRUE)
@@ -246,7 +254,8 @@ annotate_lineage <- function(wide, rules) {
 #'
 #' For each parent lineage in `rules$states`, sets each state's boolean flag
 #' only on cells whose `CellType` equals that parent; all other cells get `NA`.
-#' Adds the `Exhausted` flag (a state on T/NK cells, positive for TIM3 or LAG3).
+#' Adds the `Exhausted` flag (a state on T/NK cells, positive for any
+#' exhaustion marker defined in the rules).
 #' Where a state's marker is absent from a cell's sample panel the flag is `NA`,
 #' even for cells of the right parent type.
 #'
