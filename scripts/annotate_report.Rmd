@@ -35,10 +35,19 @@ img <- function(name) {
 }
 ```
 
-This report assigns each cell a **type** and **states** from the marker
-positivity calls, using the rules shown below. It is a **first pass**: cells
-that match more than one cell type are deliberately left as `UNKNOWN` (a
-conflict bucket) rather than resolved by a priority order.
+```{r intro-note, results="asis"}
+cat("This report assigns each cell a **type** and **states** from the marker ",
+    "positivity calls, using the rules shown below. ", sep = "")
+if (identical(rules$conflict_resolution$policy, "priority")) {
+  cat("Cells that match more than one cell type are settled by the priority ",
+      "order set out in those rules; where that order picks no single winner ",
+      "they are left as `UNKNOWN`.\n", sep = "")
+} else {
+  cat("It is a **first pass**: cells that match more than one cell type are ",
+      "deliberately left as `UNKNOWN` (a conflict bucket) rather than resolved ",
+      "by a priority order.\n", sep = "")
+}
+```
 
 ```{r rowcap-note, results="asis"}
 if (is.finite(n_max)) {
