@@ -31,6 +31,32 @@ suppressPackageStartupMessages({
 ## a cleanly-resolved parent lineage; everything else gets NA for them.
 ## ---------------------------------------------------------------------------
 
+## top-level rules keys this version of the grammar understands. Anything else
+## is a hard error: an engine that silently ignores a key it has never heard of
+## will happily produce old-policy numbers from a rules file that reads as
+## though the new policy were active, and nothing in the output says so.
+.RULES_KEYS <- c("markers", "controls", "lineages", "conflict_resolution",
+                 "states", "exhaustion", "labels", "to_confirm", "panel_notes")
+
+.CONFLICT_KEYS <- c("policy", "default_rank", "ranks", "notes")
+.RANK_KEYS     <- c("lineage", "rank", "when")
+.WHEN_KEYS     <- c("all_pos", "any_pos", "all_neg")
+
+## stop() naming the offending keys, used by every strict-key check below
+.check_keys <- function(x, allowed, what) {
+    unknown <- setdiff(names(x), allowed)
+    if (length(unknown) > 0) {
+        stop(glue::glue(
+            "read_cell_rules: unknown {what} key(s): ",
+            "{paste(unknown, collapse=', ')}. Known keys: ",
+            "{paste(allowed, collapse=', ')}. ",
+            "(A rules file written for a newer HaloXi must fail here, not be ",
+            "silently ignored.)"
+        ))
+    }
+    invisible(NULL)
+}
+
 #' Read and validate the cell-annotation rules
 #'
 #' The rules file is a *project* artifact (it encodes one study's marker panel
@@ -38,12 +64,18 @@ suppressPackageStartupMessages({
 #' package bundles no rules of its own. This mirrors [read_manifest()], which
 #' likewise takes a project file path.
 #'
+#' Unknown top-level keys are a **hard error**, as are unknown keys inside
+#' `conflict_resolution:` and its `when:` clauses. This is deliberate: an engine
+#' that predates a block ignores it silently, so a rules file written for a
+#' newer HaloXi would otherwise run to completion and report old-policy numbers.
+#'
 #' @param path Path to the rules YAML (required).
 #'
 #' @return The parsed rules as a list, with an added `marker_levels` element
 #'   (the friendly marker names) for convenience. Stops if `path` is missing,
-#'   the file does not exist, or a rule references a marker not declared in
-#'   `markers:`.
+#'   the file does not exist, a rule references a marker not declared in
+#'   `markers:`, a `conflict_resolution:` rank names a lineage not declared in
+#'   `lineages:`, or any unrecognised key is present.
 #'
 #' @export
 read_cell_rules <- function(path) {
@@ -63,6 +95,24 @@ read_cell_rules <- function(path) {
         stop(glue::glue("read_cell_rules: rules missing section(s): {paste(miss, collapse=', ')}"))
     }
 
+    .check_keys(rules, .RULES_KEYS, "top-level")
+
+    cr <- rules$conflict_resolution
+    if (!is.null(cr)) {
+        .check_keys(cr, .CONFLICT_KEYS, "conflict_resolution")
+        for (entry in cr$ranks) {
+            .check_keys(entry, .RANK_KEYS, "conflict_resolution ranks")
+            .check_keys(entry$when, .WHEN_KEYS, "conflict_resolution when")
+        }
+        bad_lin <- setdiff(purrr::map_chr(cr$ranks, "lineage"), names(rules$lineages))
+        if (length(bad_lin) > 0) {
+            stop(glue::glue(
+                "read_cell_rules: conflict_resolution ranks name undeclared ",
+                "lineage(s): {paste(bad_lin, collapse=', ')}"
+            ))
+        }
+    }
+
     declared <- names(rules$markers)
 
     ## every marker referenced anywhere must be declared in markers:
@@ -71,6 +121,7 @@ read_cell_rules <- function(path) {
         purrr::map(rules$states, function(parent) {
             purrr::map(parent, ~ .x$pos)
         }),
+        purrr::map(cr$ranks, ~ unlist(.x$when[.WHEN_KEYS], use.names = FALSE)),
         list(rules$exhaustion$any_pos),
         list(rules$controls)
     ) |> unlist() |> unique()
