@@ -584,6 +584,40 @@ summarize_celltypes <- function(obj) {
     list(long = long, wide = wide)
 }
 
+#' Multi-lineage conflicts and how they were resolved
+#'
+#' One row per sample x matched-lineage-set x outcome, over the cells that
+#' matched more than one lineage. This is the audit trail for a
+#' `conflict_resolution:` priority order: it shows how large each conflicting
+#' population is and where the priority order sent it, including the conflicts
+#' the order left as UNKNOWN.
+#'
+#' @param obj An annotated object from [annotate_cells()].
+#'
+#' @return A tibble of `Sample`, `Conflict` (the matched lineage set, `"A+B"`),
+#'   `Outcome` (the resulting `CellType`: a lineage, or the UNKNOWN label),
+#'   `Resolved` (`TRUE` where the priority order picked a winner) and `nCells`.
+#'   Errors if `obj` predates the provenance columns.
+#'
+#' @export
+summarize_conflicts <- function(obj) {
+
+    if (!"TypeConflict" %in% names(obj$cell.data)) {
+        stop("summarize_conflicts: obj$cell.data has no 'TypeConflict' column; ",
+             "it was annotated by a HaloXi older than 1.2. Re-run annotate_cells().")
+    }
+
+    obj$cell.data |>
+        filter(!is.na(.data$TypeConflict)) |>
+        mutate(
+            Outcome  = as.character(.data$CellType),
+            Resolved = .data$TypeCall == "priority"
+        ) |>
+        count(.data$Sample, Conflict = .data$TypeConflict,
+              .data$Outcome, .data$Resolved, name = "nCells") |>
+        arrange(.data$Sample, desc(.data$nCells))
+}
+
 #' Sub-state breakdowns (tumor flags, T subsets, M1/M2, exhaustion)
 #'
 #' Counts, per sample, how many cells of the relevant parent type carry each
