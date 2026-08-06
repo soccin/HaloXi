@@ -401,8 +401,8 @@ summarize_celltypes <- function(obj) {
 #'
 #' @return A long tibble: `Sample`, `State`, `nScored` (parent cells with a
 #'   callable flag = the denominator), `nPos` (flag TRUE), `pctPos` (of
-#'   `nScored`). A state with `nScored == 0` for a sample (e.g. Th1/Th2/Th17 in
-#'   S3, where the marker is absent) reports `pctPos = NA`, never a false 0.
+#'   `nScored`). A state whose marker is absent from a sample's panel has
+#'   `nScored == 0` there and reports `pctPos = NA`, never a false 0.
 #'
 #' @export
 summarize_states <- function(obj) {

@@ -22,7 +22,8 @@ short parent tag, e.g. \code{Tumor_Ki67_pos}, \code{T_CD4}, \code{Mac_M1}.
 \description{
 For each parent lineage in \code{rules$states}, sets each state's boolean flag
 only on cells whose \code{CellType} equals that parent; all other cells get \code{NA}.
-Adds the \code{Exhausted} flag (a state on T/NK cells, positive for TIM3 or LAG3).
+Adds the \code{Exhausted} flag (a state on T/NK cells, positive for any
+exhaustion marker defined in the rules).
 Where a state's marker is absent from a cell's sample panel the flag is \code{NA},
 even for cells of the right parent type.
 }

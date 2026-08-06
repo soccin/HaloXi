@@ -11,8 +11,8 @@ rules_md_lines(rules)
 }
 \value{
 A character vector of Markdown lines (no trailing newline handling;
-join with "\n"). Intended for \code{\link[=render_rules_md]{render_rules_md()}} and for inlining into the
-HTML report.
+join with a newline). Intended for \code{\link[=render_rules_md]{render_rules_md()}} and for inlining
+into the HTML report.
 }
 \description{
 Build the human-readable rules document as Markdown lines

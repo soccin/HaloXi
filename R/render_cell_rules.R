@@ -36,8 +36,8 @@
 #' @param rules Parsed rules from [read_cell_rules()].
 #'
 #' @return A character vector of Markdown lines (no trailing newline handling;
-#'   join with "\n"). Intended for [render_rules_md()] and for inlining into the
-#'   HTML report.
+#'   join with a newline). Intended for [render_rules_md()] and for inlining
+#'   into the HTML report.
 #'
 #' @export
 rules_md_lines <- function(rules) {

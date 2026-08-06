@@ -15,8 +15,11 @@ annotate_lineage(wide, rules)
 A character vector of cell types, one per row of \code{wide}.
 }
 \description{
-Evaluates every lineage's \code{require_pos} / \code{require_neg} rule with three-valued
-logic, then resolves per cell:
+Evaluates every lineage's \code{require_pos} / \code{require_neg} (and optional
+\code{any_pos}) rule with three-valued logic, then resolves per cell.
+\code{require_pos} markers must ALL be positive; \code{require_neg} markers must ALL be
+negative; if \code{any_pos} is given, at least ONE of those markers must also be
+positive. The per-cell resolution is then:
 \itemize{
 \item >1 lineage definitely matched -> \code{UNKNOWN} (conflict)
 \item exactly 1 matched             -> that lineage
