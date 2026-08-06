@@ -13,9 +13,12 @@ annotate_cells(obj, rules)
 }
 \value{
 The input \code{obj} with \code{cell.data} extended by \code{CellType} (factor,
-levels = lineages + UNKNOWN + UNCLASSIFIED), the per-state flag columns,
-\code{Exhausted}, and \code{CellState} (a \verb{;}-joined string of the cell's TRUE state
-flags). Adds \code{rules_path} and \code{VERSION} markers to the object.
+levels = lineages + UNKNOWN + UNCLASSIFIED), \code{TypeCall} and \code{TypeConflict}
+(the call provenance from \code{\link[=annotate_lineage]{annotate_lineage()}}: how each type was reached,
+and the full matched lineage set of every multi-lineage cell), the
+per-state flag columns, \code{Exhausted}, and \code{CellState} (a \verb{;}-joined string
+of the cell's TRUE state flags). Adds \code{rules_path} and \code{VERSION} markers to
+the object.
 }
 \description{
 One-call entry point: builds the wide positivity table, assigns each cell a

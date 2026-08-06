@@ -9,8 +9,8 @@ annotate_states(wide, cell_type, rules)
 \arguments{
 \item{wide}{Wide cell x marker logical table from \code{\link[=marker_pos_wide]{marker_pos_wide()}}.}
 
-\item{cell_type}{Character vector of resolved cell types (from
-\code{\link[=annotate_lineage]{annotate_lineage()}}), aligned row-wise to \code{wide}.}
+\item{cell_type}{Character vector of resolved cell types (the \code{CellType}
+column of \code{\link[=annotate_lineage]{annotate_lineage()}}), aligned row-wise to \code{wide}.}
 
 \item{rules}{Parsed rules from \code{\link[=read_cell_rules]{read_cell_rules()}}.}
 }
