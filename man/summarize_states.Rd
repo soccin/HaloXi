@@ -12,8 +12,8 @@ summarize_states(obj)
 \value{
 A long tibble: \code{Sample}, \code{State}, \code{nScored} (parent cells with a
 callable flag = the denominator), \code{nPos} (flag TRUE), \code{pctPos} (of
-\code{nScored}). A state with \code{nScored == 0} for a sample (e.g. Th1/Th2/Th17 in
-S3, where the marker is absent) reports \code{pctPos = NA}, never a false 0.
+\code{nScored}). A state whose marker is absent from a sample's panel has
+\code{nScored == 0} there and reports \code{pctPos = NA}, never a false 0.
 }
 \description{
 Counts, per sample, how many cells of the relevant parent type carry each

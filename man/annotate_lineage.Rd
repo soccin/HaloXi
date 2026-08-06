@@ -12,16 +12,46 @@ annotate_lineage(wide, rules)
 \item{rules}{Parsed rules from \code{\link[=read_cell_rules]{read_cell_rules()}}.}
 }
 \value{
-A character vector of cell types, one per row of \code{wide}.
+A tibble with one row per row of \code{wide}:
+\describe{
+\item{\code{CellType}}{chr, the resolved call.}
+\item{\code{TypeCall}}{chr, how it was reached: \code{single}, \code{priority},
+\code{conflict}, \code{unclassified} or \code{uncallable}.}
+\item{\code{TypeConflict}}{chr, the matched lineage set as \code{"A+B"} for every
+cell that matched more than one lineage -- including ones priority
+resolved, so a priority rule can never absorb a population without
+leaving a trace of its size -- and \code{NA} otherwise. Lineages are joined
+in \code{rules$lineages} order.}
+}
 }
 \description{
-Evaluates every lineage's \code{require_pos} / \code{require_neg} rule with three-valued
-logic, then resolves per cell:
+Evaluates every lineage's \code{require_pos} / \code{require_neg} (and optional
+\code{any_pos}) rule with three-valued logic, then resolves per cell.
+\code{require_pos} markers must ALL be positive; \code{require_neg} markers must ALL be
+negative; if \code{any_pos} is given, at least ONE of those markers must also be
+positive. The per-cell resolution is then:
 \itemize{
-\item >1 lineage definitely matched -> \code{UNKNOWN} (conflict)
+\item >1 lineage definitely matched -> \code{UNKNOWN} (conflict), unless the
+rules set \code{conflict_resolution: {policy: priority}} and it names a
+single winner (see below)
 \item exactly 1 matched             -> that lineage
 \item 0 matched, but >=1 lineage un-callable (a required marker absent from
 the sample) -> \code{NA}
 \item 0 matched, all lineages callable -> \code{UNCLASSIFIED}
 }
 }
+\details{
+With \code{policy: priority}, each lineage gets a rank from the first
+\code{conflict_resolution$ranks} entry naming it whose \verb{when:} clause is TRUE
+(\code{default_rank} if none fires). A conflicted cell goes to the highest-ranked
+lineage it \strong{matched}; ties, and any matched lineage whose rank is un-callable
+because a \verb{when:} marker was not measured, stay \code{UNKNOWN}. A missing
+measurement never decides a call, so a fallback entry can never stand in for
+one. Without the block, or with any other \code{policy}, behaviour is unchanged.
+}
+\section{Breaking change}{
+
+Before HaloXi 1.2 this function returned a bare character vector of cell
+types; that is now the \code{CellType} column of the returned tibble.
+}
+

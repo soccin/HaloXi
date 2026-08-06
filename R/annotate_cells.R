@@ -29,7 +29,39 @@ suppressPackageStartupMessages({
 ##
 ## Sub-states (tumor flags, T subsets, M1/M2, exhaustion) are evaluated ONLY on
 ## a cleanly-resolved parent lineage; everything else gets NA for them.
+##
+## A rules file MAY override the multi-lineage default with a
+## `conflict_resolution:` block (policy: priority), which assigns each lineage a
+## conditional rank and hands a conflicted cell to the single highest-ranked
+## lineage it matched. The mechanism lives here; the ranks and their conditions
+## are project content and live in the rules file.
 ## ---------------------------------------------------------------------------
+
+## top-level rules keys this version of the grammar understands. Anything else
+## is a hard error: an engine that silently ignores a key it has never heard of
+## will happily produce old-policy numbers from a rules file that reads as
+## though the new policy were active, and nothing in the output says so.
+.RULES_KEYS <- c("markers", "controls", "lineages", "conflict_resolution",
+                 "states", "exhaustion", "labels", "to_confirm", "panel_notes")
+
+.CONFLICT_KEYS <- c("policy", "default_rank", "ranks", "notes")
+.RANK_KEYS     <- c("lineage", "rank", "when")
+.WHEN_KEYS     <- c("all_pos", "any_pos", "all_neg")
+
+## stop() naming the offending keys, used by every strict-key check below
+.check_keys <- function(x, allowed, what) {
+    unknown <- setdiff(names(x), allowed)
+    if (length(unknown) > 0) {
+        stop(glue::glue(
+            "read_cell_rules: unknown {what} key(s): ",
+            "{paste(unknown, collapse=', ')}. Known keys: ",
+            "{paste(allowed, collapse=', ')}. ",
+            "(A rules file written for a newer HaloXi must fail here, not be ",
+            "silently ignored.)"
+        ))
+    }
+    invisible(NULL)
+}
 
 #' Read and validate the cell-annotation rules
 #'
@@ -38,12 +70,18 @@ suppressPackageStartupMessages({
 #' package bundles no rules of its own. This mirrors [read_manifest()], which
 #' likewise takes a project file path.
 #'
+#' Unknown top-level keys are a **hard error**, as are unknown keys inside
+#' `conflict_resolution:` and its `when:` clauses. This is deliberate: an engine
+#' that predates a block ignores it silently, so a rules file written for a
+#' newer HaloXi would otherwise run to completion and report old-policy numbers.
+#'
 #' @param path Path to the rules YAML (required).
 #'
 #' @return The parsed rules as a list, with an added `marker_levels` element
 #'   (the friendly marker names) for convenience. Stops if `path` is missing,
-#'   the file does not exist, or a rule references a marker not declared in
-#'   `markers:`.
+#'   the file does not exist, a rule references a marker not declared in
+#'   `markers:`, a `conflict_resolution:` rank names a lineage not declared in
+#'   `lineages:`, or any unrecognised key is present.
 #'
 #' @export
 read_cell_rules <- function(path) {
@@ -63,14 +101,33 @@ read_cell_rules <- function(path) {
         stop(glue::glue("read_cell_rules: rules missing section(s): {paste(miss, collapse=', ')}"))
     }
 
+    .check_keys(rules, .RULES_KEYS, "top-level")
+
+    cr <- rules$conflict_resolution
+    if (!is.null(cr)) {
+        .check_keys(cr, .CONFLICT_KEYS, "conflict_resolution")
+        for (entry in cr$ranks) {
+            .check_keys(entry, .RANK_KEYS, "conflict_resolution ranks")
+            .check_keys(entry$when, .WHEN_KEYS, "conflict_resolution when")
+        }
+        bad_lin <- setdiff(purrr::map_chr(cr$ranks, "lineage"), names(rules$lineages))
+        if (length(bad_lin) > 0) {
+            stop(glue::glue(
+                "read_cell_rules: conflict_resolution ranks name undeclared ",
+                "lineage(s): {paste(bad_lin, collapse=', ')}"
+            ))
+        }
+    }
+
     declared <- names(rules$markers)
 
     ## every marker referenced anywhere must be declared in markers:
     referenced <- c(
-        purrr::map(rules$lineages, ~ c(.x$require_pos, .x$require_neg)),
+        purrr::map(rules$lineages, ~ c(.x$require_pos, .x$require_neg, .x$any_pos)),
         purrr::map(rules$states, function(parent) {
             purrr::map(parent, ~ .x$pos)
         }),
+        purrr::map(cr$ranks, ~ unlist(.x$when[.WHEN_KEYS], use.names = FALSE)),
         list(rules$exhaustion$any_pos),
         list(rules$controls)
     ) |> unlist() |> unique()
@@ -187,22 +244,119 @@ marker_pos_wide <- function(obj, rules) {
     out
 }
 
+## three-valued evaluation of one `when:` clause from conflict_resolution.
+## The three optional marker lists are ANDed; an absent/empty clause is
+## unconditionally TRUE. Uses the same helpers as lineage matching, so "marker
+## not measured in this sample" stays NA and never becomes FALSE.
+.eval_when <- function(df, when) {
+    parts <- list(
+        if (length(when$all_pos)) .all_true(df, when$all_pos),
+        if (length(when$any_pos)) .any_true(df, when$any_pos),
+        if (length(when$all_neg)) .all_false(df, when$all_neg)
+    ) |> purrr::compact()
+    if (length(parts) == 0) return(rep(TRUE, nrow(df)))
+    purrr::reduce(parts, `&`)     # `&` is already three-valued
+}
+
+## per-cell x per-lineage rank matrix implied by conflict_resolution$ranks.
+##
+## Entries are scanned in file order. The first entry for a lineage whose `when`
+## is TRUE sets that lineage's rank and settles it. An entry whose `when` is NA
+## settles the lineage at rank NA -- deliberately: once a rank decision depends
+## on a measurement the sample does not have, no later fallback entry may stand
+## in for it. Lineages no entry settles take `default_rank`.
+.lineage_ranks <- function(wide, rules) {
+
+    cr <- rules$conflict_resolution
+    lineage_names <- names(rules$lineages)
+
+    ranks <- matrix(
+        as.numeric(cr$default_rank %||% 0),
+        nrow = nrow(wide), ncol = length(lineage_names),
+        dimnames = list(NULL, lineage_names)
+    )
+    settled <- matrix(FALSE, nrow = nrow(wide), ncol = length(lineage_names),
+                      dimnames = list(NULL, lineage_names))
+
+    for (entry in cr$ranks) {
+        j <- match(entry$lineage, lineage_names)
+        cond <- .eval_when(wide, entry$when)
+        open <- !settled[, j]
+        fires  <- open & !is.na(cond) & cond
+        blocks <- open & is.na(cond)
+        ranks[fires, j]  <- as.numeric(entry$rank)
+        ranks[blocks, j] <- NA_real_
+        settled[fires | blocks, j] <- TRUE
+    }
+
+    ranks
+}
+
+## "A+B" labels for the matched-lineage set of every multi-lineage cell.
+##
+## Encodes each cell's matched set as a bitmask and labels only the distinct
+## masks, then maps back -- the study's largest sample is 1.19M cells, so a
+## per-row paste() is not an option. Each distinct mask is decoded from any one
+## row that carries it, which keeps this correct for any lineage count rather
+## than capping at integer bit width.
+.conflict_labels <- function(matched, lineage_names) {
+
+    mask <- as.vector(matched %*% 2^(seq_along(lineage_names) - 1))
+    mask[rowSums(matched) < 2] <- 0
+
+    keys <- unique(mask[mask != 0])
+    if (length(keys) == 0) return(rep(NA_character_, length(mask)))
+
+    labels <- purrr::map_chr(match(keys, mask), function(i) {
+        paste(lineage_names[matched[i, ]], collapse = "+")
+    })
+
+    ifelse(mask == 0, NA_character_, labels[match(mask, keys)])
+}
+
 #' Assign a top-level cell type (lineage) to each cell
 #'
-#' Evaluates every lineage's `require_pos` / `require_neg` rule with three-valued
-#' logic, then resolves per cell:
+#' Evaluates every lineage's `require_pos` / `require_neg` (and optional
+#' `any_pos`) rule with three-valued logic, then resolves per cell.
+#' `require_pos` markers must ALL be positive; `require_neg` markers must ALL be
+#' negative; if `any_pos` is given, at least ONE of those markers must also be
+#' positive. The per-cell resolution is then:
 #' \itemize{
-#'   \item >1 lineage definitely matched -> `UNKNOWN` (conflict)
+#'   \item >1 lineage definitely matched -> `UNKNOWN` (conflict), unless the
+#'         rules set `conflict_resolution: {policy: priority}` and it names a
+#'         single winner (see below)
 #'   \item exactly 1 matched             -> that lineage
 #'   \item 0 matched, but >=1 lineage un-callable (a required marker absent from
 #'         the sample) -> `NA`
 #'   \item 0 matched, all lineages callable -> `UNCLASSIFIED`
 #' }
 #'
+#' With `policy: priority`, each lineage gets a rank from the first
+#' `conflict_resolution$ranks` entry naming it whose `when:` clause is TRUE
+#' (`default_rank` if none fires). A conflicted cell goes to the highest-ranked
+#' lineage it **matched**; ties, and any matched lineage whose rank is un-callable
+#' because a `when:` marker was not measured, stay `UNKNOWN`. A missing
+#' measurement never decides a call, so a fallback entry can never stand in for
+#' one. Without the block, or with any other `policy`, behaviour is unchanged.
+#'
 #' @param wide Wide cell x marker logical table from [marker_pos_wide()].
 #' @param rules Parsed rules from [read_cell_rules()].
 #'
-#' @return A character vector of cell types, one per row of `wide`.
+#' @return A tibble with one row per row of `wide`:
+#'   \describe{
+#'     \item{`CellType`}{chr, the resolved call.}
+#'     \item{`TypeCall`}{chr, how it was reached: `single`, `priority`,
+#'       `conflict`, `unclassified` or `uncallable`.}
+#'     \item{`TypeConflict`}{chr, the matched lineage set as `"A+B"` for every
+#'       cell that matched more than one lineage -- including ones priority
+#'       resolved, so a priority rule can never absorb a population without
+#'       leaving a trace of its size -- and `NA` otherwise. Lineages are joined
+#'       in `rules$lineages` order.}
+#'   }
+#'
+#' @section Breaking change:
+#' Before HaloXi 1.2 this function returned a bare character vector of cell
+#' types; that is now the `CellType` column of the returned tibble.
 #'
 #' @export
 annotate_lineage <- function(wide, rules) {
@@ -211,48 +365,89 @@ annotate_lineage <- function(wide, rules) {
 
     ## per-lineage three-valued match for every cell
     match_mat <- purrr::map(rules$lineages, function(rule) {
-        pos_ok <- .all_true(wide, rule$require_pos)
-        neg_ok <- .all_false(wide, rule$require_neg)
-        ## both must hold; combine with three-valued AND
+        pos_ok <- .all_true(wide, rule$require_pos)   # ALL of require_pos (AND)
+        neg_ok <- .all_false(wide, rule$require_neg)  # ALL of require_neg negative
         res <- pos_ok & neg_ok
+        ## optional ANY-of clause: lineage also needs >=1 of any_pos positive.
+        ## Only applied when the rule supplies it (absent -> no constraint), so
+        ## existing require_pos-only lineages are unaffected.
+        if (length(rule$any_pos) > 0) {
+            res <- res & .any_true(wide, rule$any_pos)
+        }
         res
     })
     match_df <- as.data.frame(match_mat, optional = TRUE)
     names(match_df) <- lineage_names
 
     mm <- as.matrix(match_df)
-    n_true <- rowSums(mm == TRUE, na.rm = TRUE)
+    matched <- mm == TRUE & !is.na(mm)
+    n_true <- rowSums(matched)
     n_na   <- rowSums(is.na(mm))
 
     unknown_lab <- rules$labels$unknown
     unclass_lab <- rules$labels$unclassified
 
-    ## index of the single matching lineage (only meaningful where n_true == 1)
-    first_true <- apply(mm, 1, function(r) {
-        w <- which(r == TRUE)
-        if (length(w) == 1) lineage_names[w] else NA_character_
-    })
+    ## the single matching lineage (only meaningful where n_true == 1)
+    first_true <- lineage_names[max.col(matched, ties.method = "first")]
 
-    out <- dplyr::case_when(
-        n_true > 1               ~ unknown_lab,
+    ## priority resolution of multi-lineage cells, if the rules ask for it.
+    ## Unmatched lineages are pushed to -Inf so they can never win however high
+    ## their rank; a matched lineage with an un-callable rank forces UNKNOWN.
+    conflicted <- n_true > 1
+    winner  <- rep(NA_character_, nrow(wide))
+    settled <- rep(FALSE, nrow(wide))
+
+    if (identical(rules$conflict_resolution$policy, "priority")) {
+        ranks <- .lineage_ranks(wide, rules)
+        ranks[!matched] <- -Inf
+        rank_na <- rowSums(is.na(ranks)) > 0
+        ranks[is.na(ranks)] <- -Inf
+
+        ## row-wise max, column by column: pmax() is vectorised where a
+        ## row-wise apply() over ~1.2M rows is not
+        best <- purrr::map(seq_len(ncol(ranks)), ~ ranks[, .x]) |>
+            purrr::reduce(pmax)
+        sole_best <- rowSums(ranks == best) == 1
+
+        settled <- conflicted & !rank_na & sole_best
+        winner[settled] <- lineage_names[max.col(ranks, ties.method = "first")][settled]
+    }
+
+    cell_type <- dplyr::case_when(
+        settled                  ~ winner,
+        conflicted               ~ unknown_lab,
         n_true == 1              ~ first_true,
-        n_true == 0 & n_na > 0   ~ NA_character_,
+        n_na > 0                 ~ NA_character_,
         TRUE                     ~ unclass_lab
     )
-    out
+
+    type_call <- dplyr::case_when(
+        settled                  ~ "priority",
+        conflicted               ~ "conflict",
+        n_true == 1              ~ "single",
+        n_na > 0                 ~ "uncallable",
+        TRUE                     ~ "unclassified"
+    )
+
+    tibble::tibble(
+        CellType     = cell_type,
+        TypeCall     = type_call,
+        TypeConflict = .conflict_labels(matched, lineage_names)
+    )
 }
 
 #' Compute parent-gated sub-state flags for every cell
 #'
 #' For each parent lineage in `rules$states`, sets each state's boolean flag
 #' only on cells whose `CellType` equals that parent; all other cells get `NA`.
-#' Adds the `Exhausted` flag (a state on T/NK cells, positive for TIM3 or LAG3).
+#' Adds the `Exhausted` flag (a state on T/NK cells, positive for any
+#' exhaustion marker defined in the rules).
 #' Where a state's marker is absent from a cell's sample panel the flag is `NA`,
 #' even for cells of the right parent type.
 #'
 #' @param wide Wide cell x marker logical table from [marker_pos_wide()].
-#' @param cell_type Character vector of resolved cell types (from
-#'   [annotate_lineage()]), aligned row-wise to `wide`.
+#' @param cell_type Character vector of resolved cell types (the `CellType`
+#'   column of [annotate_lineage()]), aligned row-wise to `wide`.
 #' @param rules Parsed rules from [read_cell_rules()].
 #'
 #' @return A tibble of state columns (one per state across all parents, plus
@@ -306,9 +501,12 @@ annotate_states <- function(wide, cell_type, rules) {
 #' @param rules Parsed rules from [read_cell_rules()] (required).
 #'
 #' @return The input `obj` with `cell.data` extended by `CellType` (factor,
-#'   levels = lineages + UNKNOWN + UNCLASSIFIED), the per-state flag columns,
-#'   `Exhausted`, and `CellState` (a `;`-joined string of the cell's TRUE state
-#'   flags). Adds `rules_path` and `VERSION` markers to the object.
+#'   levels = lineages + UNKNOWN + UNCLASSIFIED), `TypeCall` and `TypeConflict`
+#'   (the call provenance from [annotate_lineage()]: how each type was reached,
+#'   and the full matched lineage set of every multi-lineage cell), the
+#'   per-state flag columns, `Exhausted`, and `CellState` (a `;`-joined string
+#'   of the cell's TRUE state flags). Adds `rules_path` and `VERSION` markers to
+#'   the object.
 #'
 #' @export
 annotate_cells <- function(obj, rules) {
@@ -319,7 +517,8 @@ annotate_cells <- function(obj, rules) {
 
     wide <- marker_pos_wide(obj, rules)
 
-    cell_type <- annotate_lineage(wide, rules)
+    lineage <- annotate_lineage(wide, rules)
+    cell_type <- lineage$CellType
     states <- annotate_states(wide, cell_type, rules)
 
     type_levels <- c(names(rules$lineages),
@@ -335,7 +534,11 @@ annotate_cells <- function(obj, rules) {
 
     annot <- wide |>
         select(UUID) |>
-        mutate(CellType = factor(cell_type, levels = type_levels)) |>
+        mutate(
+            CellType     = factor(cell_type, levels = type_levels),
+            TypeCall     = lineage$TypeCall,
+            TypeConflict = lineage$TypeConflict
+        ) |>
         bind_cols(states) |>
         mutate(CellState = cell_state)
 
@@ -381,6 +584,40 @@ summarize_celltypes <- function(obj) {
     list(long = long, wide = wide)
 }
 
+#' Multi-lineage conflicts and how they were resolved
+#'
+#' One row per sample x matched-lineage-set x outcome, over the cells that
+#' matched more than one lineage. This is the audit trail for a
+#' `conflict_resolution:` priority order: it shows how large each conflicting
+#' population is and where the priority order sent it, including the conflicts
+#' the order left as UNKNOWN.
+#'
+#' @param obj An annotated object from [annotate_cells()].
+#'
+#' @return A tibble of `Sample`, `Conflict` (the matched lineage set, `"A+B"`),
+#'   `Outcome` (the resulting `CellType`: a lineage, or the UNKNOWN label),
+#'   `Resolved` (`TRUE` where the priority order picked a winner) and `nCells`.
+#'   Errors if `obj` predates the provenance columns.
+#'
+#' @export
+summarize_conflicts <- function(obj) {
+
+    if (!"TypeConflict" %in% names(obj$cell.data)) {
+        stop("summarize_conflicts: obj$cell.data has no 'TypeConflict' column; ",
+             "it was annotated by a HaloXi older than 1.2. Re-run annotate_cells().")
+    }
+
+    obj$cell.data |>
+        filter(!is.na(.data$TypeConflict)) |>
+        mutate(
+            Outcome  = as.character(.data$CellType),
+            Resolved = .data$TypeCall == "priority"
+        ) |>
+        count(.data$Sample, Conflict = .data$TypeConflict,
+              .data$Outcome, .data$Resolved, name = "nCells") |>
+        arrange(.data$Sample, desc(.data$nCells))
+}
+
 #' Sub-state breakdowns (tumor flags, T subsets, M1/M2, exhaustion)
 #'
 #' Counts, per sample, how many cells of the relevant parent type carry each
@@ -392,8 +629,8 @@ summarize_celltypes <- function(obj) {
 #'
 #' @return A long tibble: `Sample`, `State`, `nScored` (parent cells with a
 #'   callable flag = the denominator), `nPos` (flag TRUE), `pctPos` (of
-#'   `nScored`). A state with `nScored == 0` for a sample (e.g. Th1/Th2/Th17 in
-#'   S3, where the marker is absent) reports `pctPos = NA`, never a false 0.
+#'   `nScored`). A state whose marker is absent from a sample's panel has
+#'   `nScored == 0` there and reports `pctPos = NA`, never a false 0.
 #'
 #' @export
 summarize_states <- function(obj) {

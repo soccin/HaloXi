@@ -13,14 +13,35 @@
 ## small null-coalescing helper (avoids importing rlang's %||% at package load)
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
-## format a +/- marker requirement list as plain text, e.g. "CD3+ and CD20-"
-.fmt_requirement <- function(pos = character(), neg = character()) {
+## format a +/- marker requirement list as plain text, e.g. "CD3+ and CD20-".
+## `any` is an OR group: rendered "(A+ or B+)" and ANDed with the rest, e.g.
+## "(CD30+ or TYK2+)".
+.fmt_requirement <- function(pos = character(), neg = character(),
+                             any = character()) {
+    any_grp <- if (length(any)) {
+        grp <- paste(paste0(any, "+"), collapse = " or ")
+        if (length(any) > 1) paste0("(", grp, ")") else grp
+    }
     parts <- c(
         if (length(pos)) paste0(pos, "+"),
+        any_grp,
         if (length(neg)) paste0(neg, "-")
     )
     if (length(parts) == 0) return("(no marker requirement)")
     paste(parts, collapse = " and ")
+}
+
+## format a conflict_resolution `when:` clause in the same plain marker syntax
+## as the cell-type rules above, e.g. "A+ and B-". No clause means the entry is
+## that type's catch-all.
+.fmt_when <- function(when) {
+    if (length(when) == 0) return("any other cell of this type")
+    .fmt_requirement(pos = when$all_pos, neg = when$all_neg, any = when$any_pos)
+}
+
+## TRUE when the rules ask for priority resolution of multi-type cells
+.has_priority <- function(rules) {
+    identical(rules$conflict_resolution$policy, "priority")
 }
 
 #' Build the human-readable rules document as Markdown lines
@@ -28,8 +49,8 @@
 #' @param rules Parsed rules from [read_cell_rules()].
 #'
 #' @return A character vector of Markdown lines (no trailing newline handling;
-#'   join with "\n"). Intended for [render_rules_md()] and for inlining into the
-#'   HTML report.
+#'   join with a newline). Intended for [render_rules_md()] and for inlining
+#'   into the HTML report.
 #'
 #' @export
 rules_md_lines <- function(rules) {
@@ -65,9 +86,15 @@ rules_md_lines <- function(rules) {
     blank()
     add("- A cell is given **one** cell type when it matches the marker ",
         "pattern of exactly one type below.")
-    add("- **", rules$labels$unknown, "** = the cell matches the pattern of ",
-        "*more than one* type at once (a conflict we are not yet resolving by ",
-        "priority).")
+    if (.has_priority(rules)) {
+        add("- **", rules$labels$unknown, "** = the cell matches the pattern of ",
+            "*more than one* type at once and the priority order below does not ",
+            "settle which one wins.")
+    } else {
+        add("- **", rules$labels$unknown, "** = the cell matches the pattern of ",
+            "*more than one* type at once (a conflict we are not yet resolving by ",
+            "priority).")
+    }
     add("- **", rules$labels$unclassified, "** = the cell matches *no* type ",
         "(negative for every type-defining marker).")
     add("- **NA / un-callable** = a marker the rule needs was not measured in ",
@@ -99,12 +126,57 @@ rules_md_lines <- function(rules) {
     blank()
     for (lin in names(rules$lineages)) {
         r <- rules$lineages[[lin]]
-        add("- **", lin, "**: ", .fmt_requirement(r$require_pos, r$require_neg))
+        add("- **", lin, "**: ",
+            .fmt_requirement(r$require_pos, r$require_neg, r$any_pos))
     }
     blank()
-    add("A cell positive for the defining markers of two or more of these ",
-        "types is labeled ", rules$labels$unknown, ".")
+    if (.has_priority(rules)) {
+        add("A cell positive for the defining markers of two or more of these ",
+            "types is settled by the priority order below, and labeled ",
+            rules$labels$unknown, " where that order does not pick a single ",
+            "winner.")
+    } else {
+        add("A cell positive for the defining markers of two or more of these ",
+            "types is labeled ", rules$labels$unknown, ".")
+    }
     blank()
+
+    ## ---- conflict resolution ----------------------------------------------
+    if (.has_priority(rules)) {
+        cr <- rules$conflict_resolution
+        add("## Which type wins when a cell matches several")
+        blank()
+        add("Some cells are positive for the defining markers of more than one ",
+            "type. Each type is given a priority for those cells; the type with ",
+            "the highest priority wins. This decides only which type a mixed ",
+            "cell is *reported* as -- it does not change what makes a cell that ",
+            "type in the first place.")
+        blank()
+        add("| Cell type | Priority | Applies when the cell is |")
+        add("|---|---|---|")
+        for (entry in cr$ranks) {
+            add("| ", entry$lineage, " | ", entry$rank, " | ",
+                .fmt_when(entry$when), " |")
+        }
+        add("| every other type | ", cr$default_rank %||% 0,
+            " | (always) |")
+        blank()
+        add("Two rules apply to the table:")
+        blank()
+        add("- Only types the cell actually matches can win, however high their ",
+            "priority.")
+        add("- If two matching types tie on priority, or if a marker needed to ",
+            "decide a priority was not measured in that sample, the cell stays ",
+            rules$labels$unknown, " -- a missing measurement never decides a ",
+            "call.")
+        blank()
+        if (length(cr$notes)) {
+            add("Notes on this order:")
+            blank()
+            for (n in cr$notes) add("- ", n)
+            blank()
+        }
+    }
 
     ## ---- states -----------------------------------------------------------
     add("## States (only assigned within the matching cell type)")
@@ -149,10 +221,16 @@ rules_md_lines <- function(rules) {
     ## verbatim into the HTML report's Rmd, and a "---" line there is parsed by
     ## pandoc as a YAML metadata block (breaking the render). A blank line and
     ## italic footer separate the section just as well.
-    add("*Generated from the rules file by HaloXi. Cell types are assigned on a ",
-        "first pass without a priority order; multi-type cells are ",
-        rules$labels$unknown, " and will be revisited once you confirm the ",
-        "rules above.*")
+    if (.has_priority(rules)) {
+        add("*Generated from the rules file by HaloXi. Cells matching more than ",
+            "one type are settled by the priority order above; where it picks no ",
+            "single winner they remain ", rules$labels$unknown, ".*")
+    } else {
+        add("*Generated from the rules file by HaloXi. Cell types are assigned on a ",
+            "first pass without a priority order; multi-type cells are ",
+            rules$labels$unknown, " and will be revisited once you confirm the ",
+            "rules above.*")
+    }
 
     unlist(L, use.names = FALSE)
 }
@@ -170,6 +248,7 @@ rules_md_lines <- function(rules) {
         r <- rules$lineages[[lin]]
         if (length(r$require_pos)) note(r$require_pos, glue::glue("{lin} (+)"))
         if (length(r$require_neg)) note(r$require_neg, glue::glue("{lin} (-)"))
+        if (length(r$any_pos)) note(r$any_pos, glue::glue("{lin} (+, any)"))
     }
     for (parent in names(rules$states)) {
         for (st in names(rules$states[[parent]])) {

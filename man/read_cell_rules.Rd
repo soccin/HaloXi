@@ -12,12 +12,19 @@ read_cell_rules(path)
 \value{
 The parsed rules as a list, with an added \code{marker_levels} element
 (the friendly marker names) for convenience. Stops if \code{path} is missing,
-the file does not exist, or a rule references a marker not declared in
-\verb{markers:}.
+the file does not exist, a rule references a marker not declared in
+\verb{markers:}, a \verb{conflict_resolution:} rank names a lineage not declared in
+\verb{lineages:}, or any unrecognised key is present.
 }
 \description{
 The rules file is a \emph{project} artifact (it encodes one study's marker panel
 and cell-type definitions), so the caller must supply its path -- this
 package bundles no rules of its own. This mirrors \code{\link[=read_manifest]{read_manifest()}}, which
 likewise takes a project file path.
+}
+\details{
+Unknown top-level keys are a \strong{hard error}, as are unknown keys inside
+\verb{conflict_resolution:} and its \verb{when:} clauses. This is deliberate: an engine
+that predates a block ignores it silently, so a rules file written for a
+newer HaloXi would otherwise run to completion and report old-policy numbers.
 }
