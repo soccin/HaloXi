@@ -229,17 +229,15 @@ annotate_lineage <- function(wide, rules) {
     names(match_df) <- lineage_names
 
     mm <- as.matrix(match_df)
-    n_true <- rowSums(mm == TRUE, na.rm = TRUE)
+    matched <- mm == TRUE & !is.na(mm)
+    n_true <- rowSums(matched)
     n_na   <- rowSums(is.na(mm))
 
     unknown_lab <- rules$labels$unknown
     unclass_lab <- rules$labels$unclassified
 
-    ## index of the single matching lineage (only meaningful where n_true == 1)
-    first_true <- apply(mm, 1, function(r) {
-        w <- which(r == TRUE)
-        if (length(w) == 1) lineage_names[w] else NA_character_
-    })
+    ## the single matching lineage (only meaningful where n_true == 1)
+    first_true <- lineage_names[max.col(matched, ties.method = "first")]
 
     out <- dplyr::case_when(
         n_true > 1               ~ unknown_lab,
