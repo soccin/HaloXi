@@ -17,11 +17,13 @@ suppressPackageStartupMessages({
   library(knitr)
 })
 ## supplied by annotate_data.R via the render environment:
-##   ann_obj, ann_rules, ann_ct, ann_states, ann_plots_dir, ann_n_max
+##   ann_obj, ann_rules, ann_ct, ann_states, ann_conflicts, ann_plots_dir,
+##   ann_n_max
 obj    <- ann_obj
 rules  <- ann_rules
 ct     <- ann_ct
 states <- ann_states
+conf   <- ann_conflicts
 pdir   <- ann_plots_dir
 n_max  <- ann_n_max
 
@@ -84,6 +86,35 @@ img("composition_counts.png")
 
 ```{r comp-plot-pct, out.width="85%"}
 img("composition_pct.png")
+```
+
+```{r conflicts, results="asis"}
+## the audit trail for the priority order: how many cells matched more than one
+## type, and where each of those populations ended up. Omitted entirely when no
+## cell matched more than one type.
+if (nrow(conf) > 0) {
+  n_conf <- sum(conf$nCells)
+  n_res  <- sum(conf$nCells[conf$Resolved])
+  big <- function(x) format(x, big.mark = ",")
+
+  cat("\n# Conflicts\n\n")
+  cat(sprintf(
+    "**%s** cells matched the marker pattern of more than one cell type. ",
+    big(n_conf)))
+  if (identical(rules$conflict_resolution$policy, "priority")) {
+    cat(sprintf(
+      "The priority order settled **%s** of them; the remaining **%s** are reported as `%s`.\n\n",
+      big(n_res), big(n_conf - n_res), rules$labels$unknown))
+  } else {
+    cat(sprintf(
+      "No priority order is in force, so all of them are left as `%s`.\n\n",
+      rules$labels$unknown))
+  }
+  cat("Each row is one matched-type combination in one sample. `Resolved` marks",
+      "the cells the priority order gave to a single type.\n\n")
+  print(kable(conf))
+  cat("\n")
+}
 ```
 
 # Sub-states

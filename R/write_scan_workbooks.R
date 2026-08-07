@@ -11,7 +11,7 @@
 #'
 #' Returns the widest rendered value in a column, accounting for the openxlsx
 #' number format that will be applied (thousands separators and fixed decimal
-#' places both add characters the raw values do not have). NA/blank cells
+#' places both add characters the raw values do not have). NA and empty cells
 #' contribute nothing.
 #'
 #' @param col A column vector.
@@ -31,7 +31,7 @@ displayed_value_width <- function(col, fmt = NULL) {
     } else {
         shown <- format(col, trim = TRUE)
     }
-    ## NA renders as a blank cell, not the literal "NA"
+    ## NA renders as an empty cell, not the literal "NA"
     shown[is.na(col)] <- ""
 
     w <- nchar(shown, type = "width")
@@ -258,17 +258,22 @@ write_scan_workbooks <- function(tables, outdir) {
 #' Write the cell-annotation Excel workbook
 #'
 #' One collaborator workbook (`Cell_annotation.xlsx`) with the cell-type
-#' composition (long + wide count matrix) and the sub-state breakdown. Reuses
-#' the scanner's [add_scan_sheet()] styling.
+#' composition (long + wide count matrix), the sub-state breakdown, and -- when
+#' there are any -- the multi-lineage conflicts and how they were resolved.
+#' Reuses the scanner's [add_scan_sheet()] styling.
 #'
 #' @param ct_summary The list from [summarize_celltypes()] (`long` + `wide`).
 #' @param state_summary Long tibble from [summarize_states()].
 #' @param outdir Directory to write the workbook into (created if needed).
+#' @param conflict_summary Optional tibble from [summarize_conflicts()]. Adds a
+#'   `Conflicts` sheet, the audit trail for a priority order. `NULL` or zero-row
+#'   omits the sheet rather than shipping a blank tab.
 #'
 #' @return The workbook path written (invisibly).
 #'
 #' @export
-write_annotation_workbook <- function(ct_summary, state_summary, outdir) {
+write_annotation_workbook <- function(ct_summary, state_summary, outdir,
+                                      conflict_summary = NULL) {
 
     fs::dir_create(outdir)
     wb <- openxlsx::createWorkbook()
@@ -288,9 +293,17 @@ write_annotation_workbook <- function(ct_summary, state_summary, outdir) {
     )
     add_scan_sheet(
         wb, "States", state_summary,
-        title = "Sub-state positivity (nScored = parent cells with a callable flag; blank pctPos = un-callable)",
+        title = "Sub-state positivity (nScored = parent-type cells with a callable flag; blank pctPos = un-callable)",
         numfmt = list(nScored = "#,##0", nPos = "#,##0", pctPos = "0.00")
     )
+
+    if (!is.null(conflict_summary) && nrow(conflict_summary) > 0) {
+        add_scan_sheet(
+            wb, "Conflicts", conflict_summary,
+            title = "Cells matching more than one type, and how each was resolved (Resolved = settled by the priority order)",
+            numfmt = list(nCells = "#,##0")
+        )
+    }
 
     p <- fs::path(outdir, "Cell_annotation.xlsx")
     openxlsx::saveWorkbook(wb, p, overwrite = TRUE)

@@ -4,7 +4,12 @@
 \alias{plot_celltype_composition}
 \title{Stacked bar of cell-type composition per sample}
 \usage{
-plot_celltype_composition(ct_summary, percent = FALSE, rules = NULL)
+plot_celltype_composition(
+  ct_summary,
+  percent = FALSE,
+  rules = NULL,
+  priority = FALSE
+)
 }
 \arguments{
 \item{ct_summary}{The list returned by \code{\link[=summarize_celltypes]{summarize_celltypes()}} (uses its
@@ -17,6 +22,11 @@ absolute cell counts.}
 and for which levels are set-aside buckets rather than cell types. Optional:
 without them the levels are coloured from a generated palette and only the
 un-callable bucket is set aside.}
+
+\item{priority}{Whether multi-type cells were settled by the rules' priority
+order. Only the subtitle depends on it, but stamping "first-pass (no
+priority)" onto a plot produced under a priority policy would be false, and
+these PNGs go to collaborators.}
 }
 \value{
 A ggplot object.

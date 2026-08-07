@@ -4,7 +4,12 @@
 \alias{write_annotation_workbook}
 \title{Write the cell-annotation Excel workbook}
 \usage{
-write_annotation_workbook(ct_summary, state_summary, outdir)
+write_annotation_workbook(
+  ct_summary,
+  state_summary,
+  outdir,
+  conflict_summary = NULL
+)
 }
 \arguments{
 \item{ct_summary}{The list from \code{\link[=summarize_celltypes]{summarize_celltypes()}} (\code{long} + \code{wide}).}
@@ -12,12 +17,17 @@ write_annotation_workbook(ct_summary, state_summary, outdir)
 \item{state_summary}{Long tibble from \code{\link[=summarize_states]{summarize_states()}}.}
 
 \item{outdir}{Directory to write the workbook into (created if needed).}
+
+\item{conflict_summary}{Optional tibble from \code{\link[=summarize_conflicts]{summarize_conflicts()}}. Adds a
+\code{Conflicts} sheet, the audit trail for a priority order. \code{NULL} or zero-row
+omits the sheet rather than shipping a blank tab.}
 }
 \value{
 The workbook path written (invisibly).
 }
 \description{
 One collaborator workbook (\code{Cell_annotation.xlsx}) with the cell-type
-composition (long + wide count matrix) and the sub-state breakdown. Reuses
-the scanner's \code{\link[=add_scan_sheet]{add_scan_sheet()}} styling.
+composition (long + wide count matrix), the sub-state breakdown, and -- when
+there are any -- the multi-lineage conflicts and how they were resolved.
+Reuses the scanner's \code{\link[=add_scan_sheet]{add_scan_sheet()}} styling.
 }

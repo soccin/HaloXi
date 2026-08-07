@@ -56,10 +56,15 @@
 #'   and for which levels are set-aside buckets rather than cell types. Optional:
 #'   without them the levels are coloured from a generated palette and only the
 #'   un-callable bucket is set aside.
+#' @param priority Whether multi-type cells were settled by the rules' priority
+#'   order. Only the subtitle depends on it, but stamping "first-pass (no
+#'   priority)" onto a plot produced under a priority policy would be false, and
+#'   these PNGs go to collaborators.
 #'
 #' @return A ggplot object.
 #' @export
-plot_celltype_composition <- function(ct_summary, percent = FALSE, rules = NULL) {
+plot_celltype_composition <- function(ct_summary, percent = FALSE, rules = NULL,
+                                      priority = FALSE) {
 
     long <- if (is.list(ct_summary) && !is.data.frame(ct_summary)) ct_summary$long else ct_summary
 
@@ -85,7 +90,16 @@ plot_celltype_composition <- function(ct_summary, percent = FALSE, rules = NULL)
 
     y_lab <- if (percent) "% of cells" else "Number of cells"
     ttl <- "Cell-type composition per sample"
-    sub <- "UNKNOWN = multi-lineage conflict; UNCLASSIFIED = no lineage marker; first-pass (no priority)"
+    ## the bucket names are the rules' own, so a study that renames them gets a
+    ## subtitle that matches its bars
+    sub <- c(
+        if (!is.null(rules$labels$unknown))
+            glue::glue("{rules$labels$unknown} = multi-lineage conflict"),
+        if (!is.null(rules$labels$unclassified))
+            glue::glue("{rules$labels$unclassified} = no lineage marker"),
+        if (priority) "multi-type cells settled by the rules' priority order"
+        else "first-pass (no priority)"
+    ) |> paste(collapse = "; ")
 
     ggplot2::ggplot(pd, ggplot2::aes(Sample, value, fill = CellType)) +
         ggplot2::geom_col(width = 0.7) +
