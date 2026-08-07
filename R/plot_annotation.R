@@ -79,12 +79,12 @@ plot_celltype_composition <- function(ct_summary, percent = FALSE) {
         ggplot2::theme(legend.position = "right")
 }
 
-#' Heatmap of sub-state positivity (% of parent cells) across samples
+#' Heatmap of sub-state positivity (% of parent-type cells) across samples
 #'
 #' Shows, per state and sample, the percentage of the relevant parent-type cells
 #' that carry the state flag. Blank tiles mean the state was un-callable in that
-#' sample (e.g. the marker was absent, or there were no parent cells) -- distinct
-#' from a measured 0%.
+#' sample (e.g. the marker was absent, or the sample had none of that parent
+#' type) -- distinct from a measured 0%.
 #'
 #' @param state_summary Long tibble from [summarize_states()].
 #'
@@ -105,29 +105,35 @@ plot_state_heatmap <- function(state_summary) {
                                      limits = c(0, NA), na.value = "grey92") +
         ggplot2::labs(
             title = "State positivity (% of the parent-type cells)",
-            subtitle = "Blank/\"-\" = un-callable (marker absent or no parent cells in that sample)",
+            subtitle = "Blank/\"-\" = un-callable (marker absent, or the sample had no cells of that parent type)",
             x = NULL, y = NULL, fill = "% positive"
         ) +
         ggplot2::theme_minimal(base_size = 12) +
         ggplot2::theme(panel.grid = ggplot2::element_blank())
 }
 
-#' Barplot of tumor-cell state flags (the four "respectively" markers)
+#' Barplot of one parent lineage's state flags
 #'
-#' Focused view of the tumor sub-question: of the tumor cells in each sample,
-#' how many are positive for Ki-67 / pSTAT1 / pSTAT3 / GZMB, respectively.
+#' Focused view of a single parent type: of that type's cells in each sample,
+#' how many carry each of its state flags (independent flags, not a partition).
 #'
 #' @param state_summary Long tibble from [summarize_states()].
+#' @param tag The parent's state-column tag, as returned by [state_tags()].
+#'   Rows whose `State` begins `<tag>_` are shown, matched as a fixed prefix so
+#'   a tag can never pick up a longer tag's rows.
+#' @param parent_label Display name for the parent in the title and axis
+#'   (defaults to `tag`).
 #'
-#' @return A ggplot object (or `NULL` if there are no tumor states to show).
+#' @return A ggplot object, or `NULL` if no state rows carry that tag.
 #' @export
-plot_tumor_states <- function(state_summary) {
+plot_parent_states <- function(state_summary, tag, parent_label = tag) {
 
-    pd <- state_summary |> filter(grepl("^Tumor_", State))
+    prefix <- paste0(tag, "_")
+    pd <- state_summary |> filter(startsWith(State, prefix))
     if (nrow(pd) == 0 || all(is.na(pd$pctPos))) return(NULL)
 
     pd <- pd |>
-        mutate(State = sub("^Tumor_", "", State),
+        mutate(State = substring(State, nchar(prefix) + 1L),
                State = sub("_pos$", "", State))
 
     ggplot2::ggplot(pd, ggplot2::aes(State, pctPos, fill = Sample)) +
@@ -135,9 +141,10 @@ plot_tumor_states <- function(state_summary) {
         ggplot2::scale_y_continuous(limits = c(0, NA),
                                     expand = ggplot2::expansion(mult = c(0, 0.05))) +
         ggplot2::labs(
-            title = "Tumor-cell states (% of tumor cells positive)",
-            subtitle = "Independent flags ('respectively'); blank where no tumor cells were called",
-            x = NULL, y = "% of tumor cells", fill = NULL
+            title = glue::glue("{parent_label} states (% of {parent_label} cells positive)"),
+            subtitle = glue::glue(
+                "Independent flags; blank where no {parent_label} cells were called"),
+            x = NULL, y = glue::glue("% of {parent_label} cells"), fill = NULL
         ) +
         ggplot2::theme_minimal(base_size = 12) +
         ggplot2::theme(legend.position = "top")

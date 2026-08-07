@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_annotation.R
 \name{plot_state_heatmap}
 \alias{plot_state_heatmap}
-\title{Heatmap of sub-state positivity (\% of parent cells) across samples}
+\title{Heatmap of sub-state positivity (\% of parent-type cells) across samples}
 \usage{
 plot_state_heatmap(state_summary)
 }
@@ -15,6 +15,6 @@ A ggplot object.
 \description{
 Shows, per state and sample, the percentage of the relevant parent-type cells
 that carry the state flag. Blank tiles mean the state was un-callable in that
-sample (e.g. the marker was absent, or there were no parent cells) -- distinct
-from a measured 0\%.
+sample (e.g. the marker was absent, or the sample had none of that parent
+type) -- distinct from a measured 0\%.
 }

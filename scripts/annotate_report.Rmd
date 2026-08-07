@@ -101,17 +101,29 @@ states |> kable()
 img("state_heatmap.png")
 ```
 
-## Tumor-cell states
+## States by parent type
 
-The tumor sub-question: of the tumor cells, how many are positive for Ki-67 /
-pSTAT1 / pSTAT3 / GZMB, respectively (independent flags).
+One panel per parent type the rules define states for: of that type's cells,
+how many carry each flag (the flags are independent, not a partition).
 
-```{r tumor-plot, results="asis", out.width="75%"}
-if (file.exists(file.path(pdir, "tumor_states.png"))) {
-  img("tumor_states.png")
-} else {
-  cat("\n*No cells were called as Tumor in this run, so there are no tumor-state results to show. ",
-      "In fast QC mode this is expected when the sampled rows contain no CD30/TYK2 double-positive cells.*\n")
+```{r parent-state-files}
+## same tag that names the state columns, so the panels come out in rules order
+state_pngs <- file.path(
+  pdir, sprintf("states_%s.png", HaloXi::state_tags(rules)))
+state_pngs <- state_pngs[file.exists(state_pngs)]
+```
+
+```{r parent-state-note, results="asis"}
+if (length(state_pngs) == 0) {
+  cat("\n*No cells were called as any state parent type in this run, so there ",
+      "are no per-type state results to show. In fast QC mode this is expected ",
+      "when the sampled rows contain no cells matching those types.*\n", sep = "")
+}
+```
+
+```{r parent-state-plots, out.width="75%"}
+if (length(state_pngs) > 0) {
+  knitr::include_graphics(normalizePath(state_pngs, winslash = "/"))
 }
 ```
 
