@@ -79,8 +79,9 @@ suppressPackageStartupMessages({
 
 ## The tag for one state parent: whatever `state_tags:` declares for it, else
 ## the parent's own name with every non-alphanumeric character dropped
-## ("T cell" -> "Tcell"). The engine holds no cell-type vocabulary of its own; a
-## study that wants shorter column names than its lineage names declares them.
+## ("Cell type 2" -> "Celltype2"). The engine holds no cell-type names of its
+## own; a study that wants shorter column names than its lineage names
+## declares them.
 .state_tag <- function(parent, rules) {
     declared <- rules$state_tags[[parent]]
     if (is.null(declared)) gsub("[^A-Za-z0-9]", "", parent) else as.character(declared)
