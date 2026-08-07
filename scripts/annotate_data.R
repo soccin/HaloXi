@@ -24,7 +24,7 @@
 ## an existing scan cache is reused. Produces, under OUTDIR:
 ##   cell_rules.md            human-readable rules the calls were made from
 ##   Cell_annotation.xlsx     composition + state breakdown tables
-##   plots/*.png              composition bars, state heatmap, tumor states
+##   plots/*.png              composition bars, state heatmap, per-parent states
 ##   Cell_annotation_report.html  self-contained report
 ##   cache/scan_obj.rds       cached combined loaded object (shared with scanner)
 ##
@@ -123,6 +123,11 @@ obj <- annotate_cells(obj, rules)
 
 ct_summary <- summarize_celltypes(obj)
 state_summary <- summarize_states(obj)
+conflict_summary <- summarize_conflicts(obj)
+
+## a priority order silently reassigns cells between types, so every output
+## that shows composition has to say whether one was in force
+priority <- identical(rules$conflict_resolution$policy, "priority")
 
 ## ---- human-readable rules document (always written) -----------------------
 rules_md <- fs::path(outdir, "cell_rules.md")
@@ -131,7 +136,8 @@ message(glue::glue("annotate_data: wrote rules spec {rules_md}"))
 
 ## ---- Excel workbook -------------------------------------------------------
 message("annotate_data: writing Excel workbook")
-xlsx_path <- write_annotation_workbook(ct_summary, state_summary, outdir)
+xlsx_path <- write_annotation_workbook(ct_summary, state_summary, outdir,
+                                       conflict_summary)
 
 ## ---- PNG plots ------------------------------------------------------------
 message("annotate_data: writing plots")
@@ -144,11 +150,21 @@ ggsave2 <- function(name, plot, width, height) {
 n_types <- dplyr::n_distinct(ct_summary$long$CellType)
 n_states <- dplyr::n_distinct(state_summary$State)
 plot_paths <- c(
-    ggsave2("composition_counts.png",  plot_celltype_composition(ct_summary, percent = FALSE), 8, max(3, 0.5 * n_types + 2)),
-    ggsave2("composition_pct.png",     plot_celltype_composition(ct_summary, percent = TRUE),  8, max(3, 0.5 * n_types + 2)),
-    ggsave2("state_heatmap.png",       plot_state_heatmap(state_summary),    max(5, 1.2 * dplyr::n_distinct(state_summary$Sample) + 2), max(5, 0.32 * n_states + 1.5)),
-    ggsave2("tumor_states.png",        plot_tumor_states(state_summary),     7, 4)
+    ggsave2("composition_counts.png",  plot_celltype_composition(ct_summary, percent = FALSE, rules = rules, priority = priority), 8, max(3, 0.5 * n_types + 2)),
+    ggsave2("composition_pct.png",     plot_celltype_composition(ct_summary, percent = TRUE,  rules = rules, priority = priority), 8, max(3, 0.5 * n_types + 2)),
+    ggsave2("state_heatmap.png",       plot_state_heatmap(state_summary),    max(5, 1.2 * dplyr::n_distinct(state_summary$Sample) + 2), max(5, 0.32 * n_states + 1.5))
 )
+
+## one state barplot per parent lineage the rules define states for, named by
+## the same tag that names the state columns
+tags <- state_tags(rules)
+for (parent in names(tags)) {
+    plot_paths <- c(plot_paths, ggsave2(
+        glue::glue("states_{tags[[parent]]}.png"),
+        plot_parent_states(state_summary, tags[[parent]], parent_label = parent),
+        7, 4
+    ))
+}
 plot_paths <- plot_paths[!is.na(plot_paths)]
 
 ## ---- HTML report ----------------------------------------------------------
@@ -164,6 +180,7 @@ if (requireNamespace("rmarkdown", quietly = TRUE) && fs::file_exists(rmd_src)) {
     renv$ann_rules <- rules
     renv$ann_ct <- ct_summary
     renv$ann_states <- state_summary
+    renv$ann_conflicts <- conflict_summary
     renv$ann_plots_dir <- as.character(fs::path_abs(plots_dir))
     renv$ann_n_max <- n_max
     rmarkdown::render(

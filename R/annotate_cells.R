@@ -27,8 +27,9 @@ suppressPackageStartupMessages({
 ##   * a required marker absent from a
 ##     sample's panel                      -> NA           (un-callable)
 ##
-## Sub-states (tumor flags, T subsets, M1/M2, exhaustion) are evaluated ONLY on
-## a cleanly-resolved parent lineage; everything else gets NA for them.
+## Sub-states (whatever parent-gated flags the rules define, plus exhaustion)
+## are evaluated ONLY on a cleanly-resolved parent lineage; everything else gets
+## NA for them.
 ##
 ## A rules file MAY override the multi-lineage default with a
 ## `conflict_resolution:` block (policy: priority), which assigns each lineage a
@@ -42,11 +43,19 @@ suppressPackageStartupMessages({
 ## will happily produce old-policy numbers from a rules file that reads as
 ## though the new policy were active, and nothing in the output says so.
 .RULES_KEYS <- c("markers", "controls", "lineages", "conflict_resolution",
-                 "states", "exhaustion", "labels", "to_confirm", "panel_notes")
+                 "states", "state_tags", "exhaustion", "labels", "palette",
+                 "to_confirm", "panel_notes")
 
 .CONFLICT_KEYS <- c("policy", "default_rank", "ranks", "notes")
 .RANK_KEYS     <- c("lineage", "rank", "when")
 .WHEN_KEYS     <- c("all_pos", "any_pos", "all_neg")
+.LABEL_KEYS    <- c("unknown", "unclassified")
+
+## The label for cells whose type could not be called at all because a marker
+## the rule needs was not measured in that sample. Defined once here and used by
+## the summaries and the plot builders alike, so the string cannot drift between
+## the table that counts these cells and the plot that colours them.
+.NA_CELLTYPE <- "(NA / un-callable)"
 
 ## stop() naming the offending keys, used by every strict-key check below
 .check_keys <- function(x, allowed, what) {
@@ -60,6 +69,81 @@ suppressPackageStartupMessages({
             "silently ignored.)"
         ))
     }
+    invisible(NULL)
+}
+
+## A state flag column is named `<tag>_<state>`, and the tag is also the fixed
+## prefix the per-parent plot matches on, so it has to be a legal column name
+## rather than merely a short string.
+.STATE_TAG_PATTERN <- "^[A-Za-z][A-Za-z0-9]*$"
+
+## The tag for one state parent: whatever `state_tags:` declares for it, else
+## the parent's own name with every non-alphanumeric character dropped
+## ("Cell type 2" -> "Celltype2"). The engine holds no cell-type names of its
+## own; a study that wants shorter column names than its lineage names
+## declares them.
+.state_tag <- function(parent, rules) {
+    declared <- rules$state_tags[[parent]]
+    if (is.null(declared)) gsub("[^A-Za-z0-9]", "", parent) else as.character(declared)
+}
+
+#' Column-name tags for the state parents of a rules file
+#'
+#' State flag columns are named `<tag>_<state>`. This returns the tag every
+#' parent in `rules$states` resolves to, so a caller can name per-parent outputs
+#' (files, plots) the same way the columns are named.
+#'
+#' @param rules Parsed rules from [read_cell_rules()].
+#'
+#' @return A named character vector, one entry per parent in `rules$states`:
+#'   names are the parent lineages, values their tags. Empty if the rules define
+#'   no states.
+#'
+#' @export
+state_tags <- function(rules) {
+    parents <- names(rules$states)
+    stats::setNames(purrr::map_chr(parents, .state_tag, rules = rules), parents)
+}
+
+## Validate the tags a rules file implies. Checked over the state parents AND
+## any `state_tags:` key, so a declared tag colliding with a derived one is
+## caught as well.
+.validate_state_tags <- function(rules) {
+
+    bad_keys <- setdiff(names(rules$state_tags), names(rules$lineages))
+    if (length(bad_keys) > 0) {
+        stop(glue::glue(
+            "read_cell_rules: state_tags: name(s) undeclared lineage(s): ",
+            "{paste(bad_keys, collapse=', ')}"
+        ))
+    }
+
+    parents <- union(names(rules$states), names(rules$state_tags))
+    if (length(parents) == 0) return(invisible(NULL))
+
+    tags <- purrr::map_chr(parents, .state_tag, rules = rules)
+
+    bad <- !grepl(.STATE_TAG_PATTERN, tags)
+    if (any(bad)) {
+        offenders <- paste0(parents[bad], " -> '", tags[bad], "'", collapse = "; ")
+        stop(glue::glue(
+            "read_cell_rules: unusable state tag(s): {offenders}. A tag becomes ",
+            "a column name and a match prefix, so it must match ",
+            "{.STATE_TAG_PATTERN}. Declare a usable one under state_tags:."
+        ))
+    }
+
+    dups <- unique(tags[duplicated(tags)])
+    if (length(dups) > 0) {
+        clash <- purrr::map_chr(dups, function(tg) {
+            glue::glue("{paste(parents[tags == tg], collapse=', ')} -> '{tg}'")
+        })
+        stop(glue::glue(
+            "read_cell_rules: state tag collision: {paste(clash, collapse='; ')}. ",
+            "Tags must be unique across parents; declare them under state_tags:."
+        ))
+    }
+
     invisible(NULL)
 }
 
@@ -119,6 +203,43 @@ read_cell_rules <- function(path) {
         }
     }
 
+    ## Every states: parent must be a declared lineage. A parent no lineage can
+    ## ever equal gates its states off for every cell, so the whole block would
+    ## produce an all-NA column and no signal that a name was mistyped.
+    bad_parents <- setdiff(names(rules$states), names(rules$lineages))
+    if (length(bad_parents) > 0) {
+        stop(glue::glue(
+            "read_cell_rules: states: name(s) undeclared lineage(s): ",
+            "{paste(bad_parents, collapse=', ')}"
+        ))
+    }
+
+    ## Same for exhaustion's applies_to. This one fails silently: the Exhausted
+    ## column comes back all NA, which reads exactly like "the marker was not in
+    ## the panel" rather than "this rule matched nothing".
+    bad_applies <- setdiff(rules$exhaustion$applies_to, names(rules$lineages))
+    if (length(bad_applies) > 0) {
+        stop(glue::glue(
+            "read_cell_rules: exhaustion applies_to name(s) undeclared ",
+            "lineage(s): {paste(bad_applies, collapse=', ')}"
+        ))
+    }
+
+    ## labels: both sub-keys, nothing else, each a single non-empty string. A
+    ## missing one surfaces far downstream as a NULL in a case_when() branch.
+    .check_keys(rules$labels, .LABEL_KEYS, "labels")
+    for (k in .LABEL_KEYS) {
+        lab <- rules$labels[[k]]
+        if (!is.character(lab) || length(lab) != 1 || !nzchar(lab)) {
+            stop(glue::glue(
+                "read_cell_rules: labels: {k} must be a single non-empty ",
+                "string (it names the bucket those cells are reported under)."
+            ))
+        }
+    }
+
+    .validate_state_tags(rules)
+
     declared <- names(rules$markers)
 
     ## every marker referenced anywhere must be declared in markers:
@@ -154,8 +275,8 @@ read_cell_rules <- function(path) {
 #' what makes downstream calls collapse to `NA` rather than a wrong answer on
 #' partial panels.
 #'
-#' Columns are named by the friendly marker name from the rules (e.g. `CD30`),
-#' resolved from the data's `MarkerNorm` via the rules' `markers:` map. Data
+#' Columns are named by the friendly marker name from the rules, resolved from
+#' the data's `MarkerNorm` via the rules' `markers:` map. Data
 #' markers not present in the rules are dropped (with the exception that nothing
 #' breaks if they are missing).
 #'
@@ -164,7 +285,7 @@ read_cell_rules <- function(path) {
 #'
 #' @return A tibble with `UUID`, `Sample`, and one logical column per friendly
 #'   marker name. `TRUE`/`FALSE` where scored, `NA` where the marker is absent
-#'   from that cell's sample panel.
+#'   from the panel of the sample a cell came from.
 #'
 #' @export
 marker_pos_wide <- function(obj, rules) {
@@ -440,8 +561,8 @@ annotate_lineage <- function(wide, rules) {
 #'
 #' For each parent lineage in `rules$states`, sets each state's boolean flag
 #' only on cells whose `CellType` equals that parent; all other cells get `NA`.
-#' Adds the `Exhausted` flag (a state on T/NK cells, positive for any
-#' exhaustion marker defined in the rules).
+#' Adds the `Exhausted` flag to the lineages the rules' `exhaustion$applies_to`
+#' names, positive for any exhaustion marker defined in the rules.
 #' Where a state's marker is absent from a cell's sample panel the flag is `NA`,
 #' even for cells of the right parent type.
 #'
@@ -451,27 +572,23 @@ annotate_lineage <- function(wide, rules) {
 #' @param rules Parsed rules from [read_cell_rules()].
 #'
 #' @return A tibble of state columns (one per state across all parents, plus
-#'   `Exhausted`), aligned row-wise to `wide`. Column names are prefixed by a
-#'   short parent tag, e.g. `Tumor_Ki67_pos`, `T_CD4`, `Mac_M1`.
+#'   `Exhausted`), aligned row-wise to `wide`. Columns are named
+#'   `<tag>_<state>`, where the tag is the parent's entry from [state_tags()].
 #'
 #' @export
 annotate_states <- function(wide, cell_type, rules) {
 
-    ## short, file/column-safe parent tags for state column names
-    parent_tag <- c(
-        "Tumor" = "Tumor", "T cell" = "T", "B cell" = "B", "NK cell" = "NK",
-        "Macrophage" = "Mac", "Endothelial" = "Endo", "Myofibroblast" = "Myo"
-    )
+    tags <- state_tags(rules)
 
     out <- tibble::tibble(.rows = nrow(wide))
 
     for (parent in names(rules$states)) {
-        tag <- parent_tag[[parent]]
+        tag <- tags[[parent]]
         is_parent <- cell_type == parent & !is.na(cell_type)
         for (state in names(rules$states[[parent]])) {
             pos_markers <- rules$states[[parent]][[state]]$pos
             flag <- .any_true(wide, pos_markers)   # three-valued positivity
-            ## gate on parent: non-parent cells get NA for this state
+            ## gate on parent: cells of any other type get NA for this state
             flag[!is_parent] <- NA
             col <- glue::glue("{tag}_{state}")
             out[[col]] <- flag
@@ -567,7 +684,7 @@ annotate_cells <- function(obj, rules) {
 summarize_celltypes <- function(obj) {
 
     cd <- obj$cell.data |>
-        mutate(CellType = forcats::fct_na_value_to_level(CellType, "(NA / un-callable)"))
+        mutate(CellType = forcats::fct_na_value_to_level(CellType, .NA_CELLTYPE))
 
     long <- cd |>
         count(Sample, CellType, name = "nCells") |>
@@ -618,7 +735,7 @@ summarize_conflicts <- function(obj) {
         arrange(.data$Sample, desc(.data$nCells))
 }
 
-#' Sub-state breakdowns (tumor flags, T subsets, M1/M2, exhaustion)
+#' Sub-state breakdowns
 #'
 #' Counts, per sample, how many cells of the relevant parent type carry each
 #' state flag. A flag value of `NA` (marker absent from the sample's panel, or
@@ -627,7 +744,7 @@ summarize_conflicts <- function(obj) {
 #'
 #' @param obj An annotated object from [annotate_cells()].
 #'
-#' @return A long tibble: `Sample`, `State`, `nScored` (parent cells with a
+#' @return A long tibble: `Sample`, `State`, `nScored` (parent-type cells with a
 #'   callable flag = the denominator), `nPos` (flag TRUE), `pctPos` (of
 #'   `nScored`). A state whose marker is absent from a sample's panel has
 #'   `nScored == 0` there and reports `pctPos = NA`, never a false 0.

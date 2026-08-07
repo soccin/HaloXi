@@ -13,9 +13,8 @@
 ## small null-coalescing helper (avoids importing rlang's %||% at package load)
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
-## format a +/- marker requirement list as plain text, e.g. "CD3+ and CD20-".
-## `any` is an OR group: rendered "(A+ or B+)" and ANDed with the rest, e.g.
-## "(CD30+ or TYK2+)".
+## format a +/- marker requirement list as plain text, e.g. "A+ and B-".
+## `any` is an OR group: rendered "(A+ or B+)" and ANDed with the rest.
 .fmt_requirement <- function(pos = character(), neg = character(),
                              any = character()) {
     any_grp <- if (length(any)) {
@@ -185,7 +184,7 @@ rules_md_lines <- function(rules) {
         add("### ", parent)
         blank()
         states <- rules$states[[parent]]
-        ## note independence for tumor's four flags explicitly
+        ## spell out that a parent's flags are independent, not a partition
         add("Assigned only to cells already typed as **", parent,
             "**. Each is an independent yes/no flag (a cell can have several):")
         blank()

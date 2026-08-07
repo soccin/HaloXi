@@ -17,11 +17,13 @@ suppressPackageStartupMessages({
   library(knitr)
 })
 ## supplied by annotate_data.R via the render environment:
-##   ann_obj, ann_rules, ann_ct, ann_states, ann_plots_dir, ann_n_max
+##   ann_obj, ann_rules, ann_ct, ann_states, ann_conflicts, ann_plots_dir,
+##   ann_n_max
 obj    <- ann_obj
 rules  <- ann_rules
 ct     <- ann_ct
 states <- ann_states
+conf   <- ann_conflicts
 pdir   <- ann_plots_dir
 n_max  <- ann_n_max
 
@@ -35,10 +37,19 @@ img <- function(name) {
 }
 ```
 
-This report assigns each cell a **type** and **states** from the marker
-positivity calls, using the rules shown below. It is a **first pass**: cells
-that match more than one cell type are deliberately left as `UNKNOWN` (a
-conflict bucket) rather than resolved by a priority order.
+```{r intro-note, results="asis"}
+cat("This report assigns each cell a **type** and **states** from the marker ",
+    "positivity calls, using the rules shown below. ", sep = "")
+if (identical(rules$conflict_resolution$policy, "priority")) {
+  cat("Cells that match more than one cell type are settled by the priority ",
+      "order set out in those rules; where that order picks no single winner ",
+      "they are left as `UNKNOWN`.\n", sep = "")
+} else {
+  cat("It is a **first pass**: cells that match more than one cell type are ",
+      "deliberately left as `UNKNOWN` (a conflict bucket) rather than resolved ",
+      "by a priority order.\n", sep = "")
+}
+```
 
 ```{r rowcap-note, results="asis"}
 if (is.finite(n_max)) {
@@ -77,6 +88,35 @@ img("composition_counts.png")
 img("composition_pct.png")
 ```
 
+```{r conflicts, results="asis"}
+## the audit trail for the priority order: how many cells matched more than one
+## type, and where each of those populations ended up. Omitted entirely when no
+## cell matched more than one type.
+if (nrow(conf) > 0) {
+  n_conf <- sum(conf$nCells)
+  n_res  <- sum(conf$nCells[conf$Resolved])
+  big <- function(x) format(x, big.mark = ",")
+
+  cat("\n# Conflicts\n\n")
+  cat(sprintf(
+    "**%s** cells matched the marker pattern of more than one cell type. ",
+    big(n_conf)))
+  if (identical(rules$conflict_resolution$policy, "priority")) {
+    cat(sprintf(
+      "The priority order settled **%s** of them; the remaining **%s** are reported as `%s`.\n\n",
+      big(n_res), big(n_conf - n_res), rules$labels$unknown))
+  } else {
+    cat(sprintf(
+      "No priority order is in force, so all of them are left as `%s`.\n\n",
+      rules$labels$unknown))
+  }
+  cat("Each row is one matched-type combination in one sample. `Resolved` marks",
+      "the cells the priority order gave to a single type.\n\n")
+  print(kable(conf))
+  cat("\n")
+}
+```
+
 # Sub-states
 
 For each state, the percentage of the relevant **parent-type** cells that carry
@@ -92,17 +132,29 @@ states |> kable()
 img("state_heatmap.png")
 ```
 
-## Tumor-cell states
+## States by parent type
 
-The tumor sub-question: of the tumor cells, how many are positive for Ki-67 /
-pSTAT1 / pSTAT3 / GZMB, respectively (independent flags).
+One panel per parent type the rules define states for: of that type's cells,
+how many carry each flag (the flags are independent, not a partition).
 
-```{r tumor-plot, results="asis", out.width="75%"}
-if (file.exists(file.path(pdir, "tumor_states.png"))) {
-  img("tumor_states.png")
-} else {
-  cat("\n*No cells were called as Tumor in this run, so there are no tumor-state results to show. ",
-      "In fast QC mode this is expected when the sampled rows contain no CD30/TYK2 double-positive cells.*\n")
+```{r parent-state-files}
+## same tag that names the state columns, so the panels come out in rules order
+state_pngs <- file.path(
+  pdir, sprintf("states_%s.png", HaloXi::state_tags(rules)))
+state_pngs <- state_pngs[file.exists(state_pngs)]
+```
+
+```{r parent-state-note, results="asis"}
+if (length(state_pngs) == 0) {
+  cat("\n*No cells were called as any state parent type in this run, so there ",
+      "are no per-type state results to show. In fast QC mode this is expected ",
+      "when the sampled rows contain no cells matching those types.*\n", sep = "")
+}
+```
+
+```{r parent-state-plots, out.width="75%"}
+if (length(state_pngs) > 0) {
+  knitr::include_graphics(normalizePath(state_pngs, winslash = "/"))
 }
 ```
 

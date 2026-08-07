@@ -77,15 +77,17 @@ Rscript HaloXi/scripts/annotate_data.R manifest.csv results/annot --full
 
 ## How to read the results — three labels that are not cell types
 
-This is the one concept to understand. On this **first pass we do not force a
-winner** when the markers disagree; instead a cell can come out as one of three
-non-type labels, kept deliberately distinct:
+This is the one concept to understand. When the markers disagree, a cell can
+come out as one of three non-type labels, kept deliberately distinct:
 
 - **UNKNOWN** — the cell matches the marker pattern of **more than one** type at
   once (e.g. positive for both a T-cell and a macrophage marker). A genuine
-  conflict. A large UNKNOWN fraction tells you how much marker co-expression /
-  ambiguity is in the data *before* anyone imposes a priority order. (Resolving
-  these by priority is a planned later step.)
+  conflict. By default nothing forces a winner, so a large UNKNOWN fraction
+  tells you how much marker co-expression / ambiguity is in the data before
+  anyone imposes a priority order. A rules file may add a
+  `conflict_resolution:` block to settle some of these; cells its priority
+  order does not settle stay UNKNOWN, and the `TypeCall` / `TypeConflict`
+  columns record which is which.
 - **UNCLASSIFIED** — the cell matches **no** type (negative for every
   type-defining marker).
 - **NA / un-callable** — a marker the rule needed was **not measured in that

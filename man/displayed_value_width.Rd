@@ -17,7 +17,7 @@ Numeric scalar: the maximum displayed character width (0 if empty).
 \description{
 Returns the widest rendered value in a column, accounting for the openxlsx
 number format that will be applied (thousands separators and fixed decimal
-places both add characters the raw values do not have). NA/blank cells
+places both add characters the raw values do not have). NA and empty cells
 contribute nothing.
 }
 \keyword{internal}

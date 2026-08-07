@@ -14,7 +14,7 @@ marker_pos_wide(obj, rules)
 \value{
 A tibble with \code{UUID}, \code{Sample}, and one logical column per friendly
 marker name. \code{TRUE}/\code{FALSE} where scored, \code{NA} where the marker is absent
-from that cell's sample panel.
+from the panel of the sample a cell came from.
 }
 \description{
 Builds a wide cell x marker table of positivity from the combined object.
@@ -24,8 +24,8 @@ what makes downstream calls collapse to \code{NA} rather than a wrong answer on
 partial panels.
 }
 \details{
-Columns are named by the friendly marker name from the rules (e.g. \code{CD30}),
-resolved from the data's \code{MarkerNorm} via the rules' \verb{markers:} map. Data
+Columns are named by the friendly marker name from the rules, resolved from
+the data's \code{MarkerNorm} via the rules' \verb{markers:} map. Data
 markers not present in the rules are dropped (with the exception that nothing
 breaks if they are missing).
 }
