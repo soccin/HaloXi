@@ -144,8 +144,8 @@ ggsave2 <- function(name, plot, width, height) {
 n_types <- dplyr::n_distinct(ct_summary$long$CellType)
 n_states <- dplyr::n_distinct(state_summary$State)
 plot_paths <- c(
-    ggsave2("composition_counts.png",  plot_celltype_composition(ct_summary, percent = FALSE), 8, max(3, 0.5 * n_types + 2)),
-    ggsave2("composition_pct.png",     plot_celltype_composition(ct_summary, percent = TRUE),  8, max(3, 0.5 * n_types + 2)),
+    ggsave2("composition_counts.png",  plot_celltype_composition(ct_summary, percent = FALSE, rules = rules), 8, max(3, 0.5 * n_types + 2)),
+    ggsave2("composition_pct.png",     plot_celltype_composition(ct_summary, percent = TRUE,  rules = rules), 8, max(3, 0.5 * n_types + 2)),
     ggsave2("state_heatmap.png",       plot_state_heatmap(state_summary),    max(5, 1.2 * dplyr::n_distinct(state_summary$Sample) + 2), max(5, 0.32 * n_states + 1.5))
 )
 

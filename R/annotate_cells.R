@@ -43,8 +43,8 @@ suppressPackageStartupMessages({
 ## will happily produce old-policy numbers from a rules file that reads as
 ## though the new policy were active, and nothing in the output says so.
 .RULES_KEYS <- c("markers", "controls", "lineages", "conflict_resolution",
-                 "states", "state_tags", "exhaustion", "labels", "to_confirm",
-                 "panel_notes")
+                 "states", "state_tags", "exhaustion", "labels", "palette",
+                 "to_confirm", "panel_notes")
 
 .CONFLICT_KEYS <- c("policy", "default_rank", "ranks", "notes")
 .RANK_KEYS     <- c("lineage", "rank", "when")
@@ -683,7 +683,7 @@ annotate_cells <- function(obj, rules) {
 summarize_celltypes <- function(obj) {
 
     cd <- obj$cell.data |>
-        mutate(CellType = forcats::fct_na_value_to_level(CellType, "(NA / un-callable)"))
+        mutate(CellType = forcats::fct_na_value_to_level(CellType, .NA_CELLTYPE))
 
     long <- cd |>
         count(Sample, CellType, name = "nCells") |>

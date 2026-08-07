@@ -4,7 +4,7 @@
 \alias{plot_celltype_composition}
 \title{Stacked bar of cell-type composition per sample}
 \usage{
-plot_celltype_composition(ct_summary, percent = FALSE)
+plot_celltype_composition(ct_summary, percent = FALSE, rules = NULL)
 }
 \arguments{
 \item{ct_summary}{The list returned by \code{\link[=summarize_celltypes]{summarize_celltypes()}} (uses its
@@ -12,6 +12,11 @@ plot_celltype_composition(ct_summary, percent = FALSE)
 
 \item{percent}{If TRUE, bars are scaled to 100\% within each sample; if FALSE,
 absolute cell counts.}
+
+\item{rules}{Parsed rules from \code{\link[=read_cell_rules]{read_cell_rules()}}, used for the bar colours
+and for which levels are set-aside buckets rather than cell types. Optional:
+without them the levels are coloured from a generated palette and only the
+un-callable bucket is set aside.}
 }
 \value{
 A ggplot object.

@@ -4,25 +4,43 @@
 ## (theme_minimal, coord_flip bars, the #2c7fb8 / #08519c blues).
 ## ---------------------------------------------------------------------------
 
-## a stable-ish palette for cell types: real lineages get colour, the
+## The levels that are not real cell types: the multi-lineage conflict bucket,
+## the matched-nothing bucket, and the cells no call could be made for at all.
+## The first two are named by the rules -- a study may rename them -- so they are
+## never matched by literal here.
+.setaside_levels <- function(rules = NULL) {
+    c(rules$labels$unknown, rules$labels$unclassified, .NA_CELLTYPE)
+}
+
+## a stable palette for cell types: real lineages get colour, the
 ## not-a-clean-call buckets get neutral greys so they read as "set aside".
-.celltype_palette <- function(levels) {
-    lineage_cols <- c(
-        "Tumor"         = "#e6550d",
-        "T cell"        = "#2c7fb8",
-        "B cell"        = "#41ab5d",
-        "NK cell"       = "#807dba",
-        "Macrophage"    = "#d6616b",
-        "Endothelial"   = "#fec44f",
-        "Myofibroblast" = "#8c6d31"
-    )
+##
+## Lineage colours come from the rules' optional `palette:`; any lineage it does
+## not name gets one from a generated qualitative palette, assigned in
+## rules$lineages order so the same rules file always yields the same colours.
+## Without rules (the builders are exported and must not hard-require them) the
+## levels themselves stand in for the lineage list.
+.celltype_palette <- function(levels, rules = NULL) {
+
+    grey_for <- function(label, shade) {
+        if (is.null(label)) NULL else stats::setNames(shade, label)
+    }
     neutral <- c(
-        "UNKNOWN"            = "grey55",
-        "UNCLASSIFIED"       = "grey80",
-        "(NA / un-callable)" = "grey90"
+        grey_for(rules$labels$unknown,      "grey55"),
+        grey_for(rules$labels$unclassified, "grey80"),
+        grey_for(.NA_CELLTYPE,              "grey90")
     )
-    pal <- c(lineage_cols, neutral)
-    ## any level not covered (e.g. renamed) falls back to a mid grey
+
+    coloured <- names(rules$lineages) %||% setdiff(levels, names(neutral))
+    generated <- if (length(coloured) > 0) {
+        stats::setNames(grDevices::hcl.colors(length(coloured), "Dark 3"), coloured)
+    } else {
+        character()
+    }
+
+    ## declared colours win over the greys, and both over the generated ones
+    pal <- c(unlist(rules$palette), neutral, generated)
+    ## any level still not covered falls back to a mid grey
     missing <- setdiff(levels, names(pal))
     if (length(missing)) pal <- c(pal, stats::setNames(rep("grey65", length(missing)), missing))
     pal[levels]
@@ -34,15 +52,19 @@
 #'   `long` element), or that long tibble directly.
 #' @param percent If TRUE, bars are scaled to 100% within each sample; if FALSE,
 #'   absolute cell counts.
+#' @param rules Parsed rules from [read_cell_rules()], used for the bar colours
+#'   and for which levels are set-aside buckets rather than cell types. Optional:
+#'   without them the levels are coloured from a generated palette and only the
+#'   un-callable bucket is set aside.
 #'
 #' @return A ggplot object.
 #' @export
-plot_celltype_composition <- function(ct_summary, percent = FALSE) {
+plot_celltype_composition <- function(ct_summary, percent = FALSE, rules = NULL) {
 
     long <- if (is.list(ct_summary) && !is.data.frame(ct_summary)) ct_summary$long else ct_summary
 
     ## order cell types: lineages first (by total), then the set-aside buckets
-    buckets <- c("UNKNOWN", "UNCLASSIFIED", "(NA / un-callable)")
+    buckets <- .setaside_levels(rules)
     totals <- long |>
         group_by(CellType) |>
         summarize(tot = sum(nCells), .groups = "drop")
@@ -59,7 +81,7 @@ plot_celltype_composition <- function(ct_summary, percent = FALSE) {
             value = if (percent) pct else nCells
         )
 
-    pal <- .celltype_palette(level_order)
+    pal <- .celltype_palette(level_order, rules)
 
     y_lab <- if (percent) "% of cells" else "Number of cells"
     ttl <- "Cell-type composition per sample"
