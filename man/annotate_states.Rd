@@ -16,14 +16,14 @@ column of \code{\link[=annotate_lineage]{annotate_lineage()}}), aligned row-wise
 }
 \value{
 A tibble of state columns (one per state across all parents, plus
-\code{Exhausted}), aligned row-wise to \code{wide}. Column names are prefixed by a
-short parent tag, e.g. \code{Tumor_Ki67_pos}, \code{T_CD4}, \code{Mac_M1}.
+\code{Exhausted}), aligned row-wise to \code{wide}. Columns are named
+\verb{<tag>_<state>}, where the tag is the parent's entry from \code{\link[=state_tags]{state_tags()}}.
 }
 \description{
 For each parent lineage in \code{rules$states}, sets each state's boolean flag
 only on cells whose \code{CellType} equals that parent; all other cells get \code{NA}.
-Adds the \code{Exhausted} flag (a state on T/NK cells, positive for any
-exhaustion marker defined in the rules).
+Adds the \code{Exhausted} flag to the lineages the rules' \code{exhaustion$applies_to}
+names, positive for any exhaustion marker defined in the rules.
 Where a state's marker is absent from a cell's sample panel the flag is \code{NA},
 even for cells of the right parent type.
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/annotate_cells.R
 \name{summarize_states}
 \alias{summarize_states}
-\title{Sub-state breakdowns (tumor flags, T subsets, M1/M2, exhaustion)}
+\title{Sub-state breakdowns}
 \usage{
 summarize_states(obj)
 }
@@ -10,7 +10,7 @@ summarize_states(obj)
 \item{obj}{An annotated object from \code{\link[=annotate_cells]{annotate_cells()}}.}
 }
 \value{
-A long tibble: \code{Sample}, \code{State}, \code{nScored} (parent cells with a
+A long tibble: \code{Sample}, \code{State}, \code{nScored} (parent-type cells with a
 callable flag = the denominator), \code{nPos} (flag TRUE), \code{pctPos} (of
 \code{nScored}). A state whose marker is absent from a sample's panel has
 \code{nScored == 0} there and reports \code{pctPos = NA}, never a false 0.
