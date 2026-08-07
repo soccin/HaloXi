@@ -47,6 +47,13 @@ suppressPackageStartupMessages({
 .CONFLICT_KEYS <- c("policy", "default_rank", "ranks", "notes")
 .RANK_KEYS     <- c("lineage", "rank", "when")
 .WHEN_KEYS     <- c("all_pos", "any_pos", "all_neg")
+.LABEL_KEYS    <- c("unknown", "unclassified")
+
+## The label for cells whose type could not be called at all because a marker
+## the rule needs was not measured in that sample. Defined once here and used by
+## the summaries and the plot builders alike, so the string cannot drift between
+## the table that counts these cells and the plot that colours them.
+.NA_CELLTYPE <- "(NA / un-callable)"
 
 ## stop() naming the offending keys, used by every strict-key check below
 .check_keys <- function(x, allowed, what) {
@@ -115,6 +122,41 @@ read_cell_rules <- function(path) {
             stop(glue::glue(
                 "read_cell_rules: conflict_resolution ranks name undeclared ",
                 "lineage(s): {paste(bad_lin, collapse=', ')}"
+            ))
+        }
+    }
+
+    ## Every states: parent must be a declared lineage. A parent no lineage can
+    ## ever equal gates its states off for every cell, so the whole block would
+    ## produce an all-NA column and no signal that a name was mistyped.
+    bad_parents <- setdiff(names(rules$states), names(rules$lineages))
+    if (length(bad_parents) > 0) {
+        stop(glue::glue(
+            "read_cell_rules: states: name(s) undeclared lineage(s): ",
+            "{paste(bad_parents, collapse=', ')}"
+        ))
+    }
+
+    ## Same for exhaustion's applies_to. This one fails silently: the Exhausted
+    ## column comes back all NA, which reads exactly like "the marker was not in
+    ## the panel" rather than "this rule matched nothing".
+    bad_applies <- setdiff(rules$exhaustion$applies_to, names(rules$lineages))
+    if (length(bad_applies) > 0) {
+        stop(glue::glue(
+            "read_cell_rules: exhaustion applies_to name(s) undeclared ",
+            "lineage(s): {paste(bad_applies, collapse=', ')}"
+        ))
+    }
+
+    ## labels: both sub-keys, nothing else, each a single non-empty string. A
+    ## missing one surfaces far downstream as a NULL in a case_when() branch.
+    .check_keys(rules$labels, .LABEL_KEYS, "labels")
+    for (k in .LABEL_KEYS) {
+        lab <- rules$labels[[k]]
+        if (!is.character(lab) || length(lab) != 1 || !nzchar(lab)) {
+            stop(glue::glue(
+                "read_cell_rules: labels: {k} must be a single non-empty ",
+                "string (it names the bucket those cells are reported under)."
             ))
         }
     }
