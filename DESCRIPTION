@@ -1,6 +1,6 @@
 Package: HaloXi
 Title: Tools for processing Halo object files
-Version: 1.3.pre
+Version: 1.4.pre
 Authors@R: 
     person("N.", "Socci", , "soccin@mskcc.org", role = c("aut", "cre"))
 Description: Lightweight (hopefully) scripts to process Halo files.
@@ -26,6 +26,6 @@ Suggests:
     tibble
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 License: file LICENSE
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.1.0

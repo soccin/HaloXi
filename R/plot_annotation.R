@@ -46,6 +46,23 @@
     pal[levels]
 }
 
+## Wrap a plot subtitle so it cannot run off the canvas.
+##
+## Applied to the FINAL joined string, never per clause: with a clause dropped
+## the wrap points have to move with it. Widening the canvas is not the fix --
+## the clause text comes from `rules$labels`, which a study may set to anything,
+## so any fixed canvas width can be overflowed again. 90 characters fits the
+## 8-inch canvas the annotate driver saves at, at the default base size, with
+## margin to spare; the builder cannot know the width it will be saved at, so
+## the number is not derived from one.
+##
+## strwrap() only ever replaces a single space with a line break, so the
+## rendered text is the joined string with its layout changed and nothing else.
+.wrap_subtitle <- function(s, width = 90) {
+    if (length(s) != 1 || is.na(s)) return(s)
+    paste(strwrap(s, width = width), collapse = "\n")
+}
+
 #' Stacked bar of cell-type composition per sample
 #'
 #' @param ct_summary The list returned by [summarize_celltypes()] (uses its
@@ -99,7 +116,9 @@ plot_celltype_composition <- function(ct_summary, percent = FALSE, rules = NULL,
             glue::glue("{rules$labels$unclassified} = no lineage marker"),
         if (priority) "multi-type cells settled by the rules' priority order"
         else "first-pass (no priority)"
-    ) |> paste(collapse = "; ")
+    ) |>
+        paste(collapse = "; ") |>
+        .wrap_subtitle()
 
     ggplot2::ggplot(pd, ggplot2::aes(Sample, value, fill = CellType)) +
         ggplot2::geom_col(width = 0.7) +
