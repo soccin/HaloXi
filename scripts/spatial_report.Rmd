@@ -1,0 +1,194 @@
+---
+title: "Spatial analysis -- co-location and neighbourhood"
+date: "`r format(Sys.time(), '%Y-%m-%d %H:%M')`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    self_contained: true
+    df_print: paged
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(knitr)
+})
+## supplied by spatial_data.R via the render environment:
+##   sp_coloc, sp_neigh, sp_rules, sp_plots_dir, sp_n_max, sp_um_per_px,
+##   sp_radii, sp_samples, sp_dup_centroids
+coloc  <- sp_coloc
+neigh  <- sp_neigh
+pdir   <- sp_plots_dir
+n_max  <- sp_n_max
+upp    <- sp_um_per_px
+radii  <- sp_radii
+p      <- neigh$params
+p_floor <- 2 / (p$n_perm + 1)
+
+img <- function(name) {
+  f <- file.path(pdir, name)
+  if (!file.exists(f)) return(invisible(NULL))
+  knitr::include_graphics(normalizePath(f, winslash = "/", mustWork = TRUE))
+}
+
+## a p at the floor is the resolution of the test, not a p of zero, so it is
+## never printed as a number that reads like one
+fmt_p <- function(x) {
+  ifelse(x <= p_floor + 1e-12,
+         paste0("<", format(signif(p_floor, 2))),
+         format(signif(x, 3)))
+}
+```
+
+```{r banner, results="asis"}
+if (is.finite(n_max)) {
+  cat(sprintf(
+    "> **Fast QC mode:** only the first **%s** rows of each Halo file were read. Every count and percentage below reflects only those sampled rows. Re-run with `--full` for whole-file numbers.\n\n",
+    format(n_max, big.mark = ",")
+  ))
+}
+cat(sprintf(
+  "> **Scan resolution: %s um per pixel.** Halo exports coordinates in pixels and carries no scan metadata, so every distance below is only as right as this number. It was supplied on the command line, not inferred.\n\n",
+  format(upp)
+))
+cat(sprintf(
+  "Specimens analysed: **%s**. Distances are measured centre to centre between cell bounding-box midpoints.\n",
+  paste(sp_samples, collapse = ", ")
+))
+if (sp_dup_centroids > 0) {
+  cat(sprintf(
+    "\n%s cells share a centroid with another cell. Pairs at distance exactly 0 fall outside the half-open distance band and are not counted anywhere below.\n",
+    format(sp_dup_centroids, big.mark = ",")
+  ))
+}
+```
+
+# How this is tested
+
+Both analyses compare what is observed against **a random rearrangement of the
+same cell-type labels over the same cells**, within each specimen, repeated
+`r p$n_perm` times.
+
+That null is the point. Tissue is not a uniform random field: cells are packed
+into structures, and against a null that assumes uniformity nearly every pair
+of types in a real section comes out significant. Shuffling the labels holds
+the geometry, the local packing density and the specimen's overall composition
+fixed, and destroys only the association between where a cell is and what it
+is -- which is the thing being asked about.
+
+Two consequences worth keeping in view:
+
+- **The smallest p this can report is `r format(signif(p_floor, 2))`**
+  (`2 / (permutations + 1)`). A row at that value means "smaller than this test
+  resolves", never `p = 0`. Raising the permutation count is what resolves
+  further.
+- **Cells near the tissue edge have neighbourhoods cut off by the edge**, so
+  raw counts there are biased low. The ratios -- `log2FC` and `log2Enrich` --
+  are not affected, because the null is built over the same cells with the same
+  truncation, so the bias cancels. No border correction is applied; read the
+  ratios rather than the counts.
+
+# Which cell types sit closer together than chance
+
+Every pair of cell types, counted over cell pairs whose centres fall within
+`r paste(radii, collapse = " and ")` um, against the shuffled-label null.
+Self-pairs are included: a type paired with itself measures how clustered that
+type is.
+
+```{r coloc-plot}
+img("colocation_heatmap.png")
+```
+
+## The strongest associations
+
+```{r coloc-table}
+coloc |>
+  filter(qBH < 0.05) |>
+  arrange(desc(abs(log2FC))) |>
+  head(30) |>
+  transmute(
+    Band = paste0(RadiusInner, "-", RadiusOuter, " um"),
+    Sample, TypeA, TypeB,
+    nObs = round(nObs), nExp = round(nExp),
+    log2FC = round(log2FC, 2), z = round(z, 1),
+    pEmp = fmt_p(pEmp), qBH = signif(qBH, 3)
+  ) |>
+  kable(caption = "Type-pairs clearing q < 0.05, strongest effect first. nObs is the observed pair count, nExp what shuffling the labels gives.")
+```
+
+# What the tissue around each `r p$anchor_type` cell is made of
+
+The ring is `r p$r_inner`-`r p$r_outer` um: a ring rather than a disc, so it
+describes the surrounding tissue rather than the cells in immediate contact.
+`r format(max(neigh$summary$nAnchors), big.mark = ",")` anchor cells at most,
+per specimen.
+
+```{r neigh-composition}
+img("neighborhood_composition.png")
+```
+
+```{r neigh-enrichment}
+img("neighborhood_enrichment.png")
+```
+
+## Ring composition
+
+```{r neigh-table}
+neigh$summary |>
+  arrange(Sample, desc(pctOfRing)) |>
+  transmute(
+    Sample, NeighborType,
+    nAnchors, nNeighbors,
+    meanPerAnchor = round(meanPerAnchor, 2),
+    pctOfRing = round(pctOfRing, 2),
+    pctBackground = round(pctBackground, 2),
+    log2Enrich = round(log2Enrich, 2),
+    pEmp = fmt_p(pEmp), qBH = signif(qBH, 3)
+  ) |>
+  kable(caption = "pctOfRing is the type's share of the ring; pctBackground its share of the whole specimen. log2Enrich compares the ring against the shuffled-label null and is unaffected by rings cut off at the tissue edge.")
+```
+
+## How much the rings vary
+
+`meanPerAnchor` is a mean over anchor cells whose rings differ a great deal --
+some sit in dense tissue, some at an edge. The spread behind it:
+
+```{r ring-spread}
+neigh$per_anchor |>
+  group_by(Sample) |>
+  summarize(
+    anchors = n(),
+    mean = round(mean(nRing), 1),
+    min = min(nRing),
+    q25 = stats::quantile(nRing, 0.25),
+    median = stats::median(nRing),
+    q75 = stats::quantile(nRing, 0.75),
+    max = max(nRing),
+    .groups = "drop"
+  ) |>
+  kable(caption = "Cells in the ring, per anchor cell.")
+```
+
+# Parameters
+
+```{r params}
+tibble::tibble(
+  Parameter = c("microns per pixel", "co-location radii (um)",
+                "neighbourhood ring (um)", "anchor type",
+                "permutations", "smallest reportable p", "seed",
+                "row cap"),
+  Value = c(
+    format(upp),
+    paste(radii, collapse = ", "),
+    paste0(p$r_inner, "-", p$r_outer),
+    p$anchor_type,
+    format(p$n_perm),
+    format(signif(p_floor, 2)),
+    format(p$seed),
+    if (is.finite(n_max)) format(n_max, big.mark = ",") else "all rows"
+  )
+) |> kable()
+```
