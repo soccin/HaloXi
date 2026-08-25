@@ -33,7 +33,7 @@ not edit the code.
 ## How to run it
 
 ```sh
-Rscript HaloXi/scripts/annotate_data.R MANIFEST.csv [OUTDIR] [--rules=FILE] [--refresh] [--rows=N | --full]
+Rscript HaloXi/scripts/annotate_data.R MANIFEST.csv [OUTDIR] [--rules=FILE] [--cache=FILE] [--refresh] [--rows=N | --full]
 ```
 
 | Argument | Meaning |
@@ -42,6 +42,7 @@ Rscript HaloXi/scripts/annotate_data.R MANIFEST.csv [OUTDIR] [--rules=FILE] [--r
 | `OUTDIR` | Where outputs go. Default: `results/annot`. |
 | `--rules=FILE` | Rules YAML to use. Default: `annotation/cell_rules.yaml` (relative to where you run the command). |
 | `--full` / `--rows=N` | Whole-file vs. first-N-rows, same as scan. |
+| `--cache=FILE` | Loaded-data cache to build or reuse. Default: `cache/<name of OUTDIR>/scan_obj.rds`. Point it at the scan stage's cache to load the data once. |
 | `--refresh` | Re-read the CSVs instead of using the cache. |
 
 **Default is fast QC (first 100 rows per file)**, same as scan.

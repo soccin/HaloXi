@@ -157,6 +157,50 @@ marker_presence_matrix <- function(marker_scan) {
         arrange(desc(nSamples), MarkerNorm)
 }
 
+#' Default cache location for a driver's output directory
+#'
+#' The loaded object is a build artifact of ~600 MB on a whole-section study,
+#' and `outdir` is a deliverable -- the folder that gets zipped and sent. So the
+#' cache is never written inside `outdir`: it goes to `cache/<name>/` relative
+#' to the working directory, where `<name>` is the last component of `outdir`.
+#'
+#' Keeping `outdir`'s own name, rather than sharing one cache across every
+#' stage, is deliberate. The QC scan's default row cap is 100 and an analysis
+#' run is `--full`, so a shared path would let a quick scan discard a full cache
+#' and cost a re-read of the raw CSVs. Two runs of the same stage *do* share, and
+#' correctly: the loaded object depends on the manifest and the row cap and on
+#' nothing else.
+#'
+#' @param outdir The driver's output directory.
+#' @param cache_arg The value of the driver's `--cache=` argument, or NULL when
+#'   it was not given. A non-empty value is returned unchanged.
+#'
+#' @return A path to the RDS cache file. Nothing is created; [load_manifest()]
+#'   creates the directory when it writes.
+#'
+#' @export
+resolve_cache_path <- function(outdir, cache_arg = NULL) {
+
+    if (!is.null(cache_arg) && nzchar(cache_arg)) return(as.character(cache_arg))
+
+    name <- fs::path_file(fs::path_norm(outdir))
+    if (!nzchar(name) || name %in% c(".", "..", "/")) name <- "halo"
+    default <- fs::path("cache", name, "scan_obj.rds")
+
+    ## Migration aid, not a fallback: a cache left where the old default put it
+    ## is named and ignored. Silently using it would keep writing 600 MB build
+    ## artifacts into deliverables forever.
+    legacy <- fs::path(outdir, "cache", "scan_obj.rds")
+    if (fs::file_exists(legacy)) {
+        message(glue::glue(
+            "resolve_cache_path: ignoring the cache at {legacy} -- the default moved ",
+            "out of the output directory. Pass --cache={legacy} to reuse it."
+        ))
+    }
+
+    as.character(default)
+}
+
 #' The identity a cached object is compared on
 #'
 #' `Sample` and `HaloFile` for every manifest row, in order, as plain character

@@ -22,28 +22,34 @@ roxygen2::roxygenise()      # or devtools::document()
 # load the package from source without installing (what scripts do)
 pkgload::load_all(".")      # or devtools::load_all()
 
-# install
-R CMD INSTALL .             # or devtools::install()
-
-# check
-R CMD build . && R CMD check HaloXi_*.tar.gz   # or devtools::check()
+# run the tests
+devtools::test()
 ```
 
-There is no test suite (no `tests/` directory) and no linter configured.
+There is no linter configured. Note that `R CMD build`/`INSTALL`/`check` all
+fail at the `Version:` field, which uses a `1.6.pre` scheme R rejects as
+malformed; check a scratch copy with a valid `Version:` instead.
 
 ## Running the scanner end to end
 
 The user-facing entry point is the CLI driver, not a package function:
 
 ```sh
-scripts/scan_data.R MANIFEST.csv [OUTDIR] [--refresh] [--rows=N | --full]
+scripts/scan_data.R MANIFEST.csv [OUTDIR] [--cache=FILE] [--refresh] [--rows=N | --full]
 ```
 
 - `MANIFEST.csv` must have columns `Sample` and `HaloFile` (paths absolute or
   relative to the manifest's own directory).
 - Default reads only the first **100 rows per file** for a fast QC pass; use
   `--full` (or `--rows=N`) for a complete load.
-- `--refresh` ignores the RDS cache at `OUTDIR/cache/scan_obj.rds`.
+- The loaded-object cache is **never written under `OUTDIR`** -- `OUTDIR` is a
+  deliverable and the cache is a build artifact of several hundred MB. It
+  defaults to `cache/<name of OUTDIR>/scan_obj.rds`, relative to the working
+  directory; `--cache=FILE` overrides that, and is how the three stages are
+  made to share one loaded object. All three drivers take it. A cache left
+  where older versions put it, under `OUTDIR`, is named in a message and
+  ignored -- not silently reused.
+- `--refresh` ignores the cache and reloads from source.
 - The script auto-loads HaloXi: installed package if available, else
   `pkgload::load_all()` from the package root (it locates the root via its own
   `--file=` path).
@@ -74,7 +80,12 @@ Data flows in one direction; each stage is its own file in `R/`:
      panel — fast and independent of the row cap, so panel-presence tables are
      always complete even under `--rows=N`.
    - `load_manifest()` calls `load_halo()` per sample, row-binds into one
-     combined object, and caches to RDS (cache keyed on `n_max`).
+     combined object, and caches to RDS. The cache is keyed on **the manifest
+     and the row cap together**: `Sample` and `HaloFile` for every row in
+     order, via `.manifest_key()`, plus `n_max`. Keying on `n_max` alone let a
+     run against an edited manifest silently describe the old sample set.
+   - `resolve_cache_path()` decides where that cache goes -- outside `OUTDIR`,
+     always. See "Running the scanner end to end".
    - `summarize_*` / `marker_*_matrix()` build the summary tibbles.
    - `plot_*` builders each return a ggplot object (no I/O).
    - `scan_manifest()` is the single top-level function that runs all of the

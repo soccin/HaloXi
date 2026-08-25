@@ -37,8 +37,11 @@ report you can open in a browser and send to collaborators.
    calls, using a human-readable rules file you (and your biologist) control.
    Answers "what is each cell?" See **[stage-annotate.md](stage-annotate.md)**.
 
-Run them in order: **scan first** (always), then **annotate**. Annotate reuses
-the data that scan already loaded and cached, so the second run is fast.
+Run them in order: **scan first** (always), then **annotate**. Both cache the
+data they load, and pointing them at the same cache with `--cache=` means it is
+read once and the second run is fast. The cache is never written inside the
+output directory: that folder is what you send to a collaborator, and the cache
+is a build artifact that can run to hundreds of megabytes.
 
 ## The one input you provide: a manifest
 

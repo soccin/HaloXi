@@ -26,8 +26,8 @@
 ##                      resolution, so guessing it would rescale every distance
 ##     --rules=FILE     cell-annotation rules YAML
 ##                      (default: annotation/cell_rules.yaml)
-##     --cache=FILE     loaded-object cache to reuse
-##                      (default: OUTDIR/cache/scan_obj.rds)
+##     --cache=FILE     loaded-object cache to build or reuse
+##                      (default: cache/<name of OUTDIR>/scan_obj.rds)
 ##     --samples=A,B    analyse only these samples (default: all in the
 ##                      manifest). Applied after loading, so the shared cache
 ##                      stays valid
@@ -39,7 +39,13 @@
 ##     --refresh        reload from source, ignoring cache
 ##     --rows=N/--full  row cap per Halo file (default 100, fast QC)
 ##
-## Reuses the same loaded-object cache as scan_data.R and annotate_data.R.
+## Shares the loaded-object cache with scan_data.R and annotate_data.R -- point
+## them at one file with --cache= and the 600 MB object is built once. The cache
+## is keyed on the manifest and the row cap together, so a run against an edited
+## manifest reloads rather than silently describing the old sample set. It is NOT
+## written under OUTDIR: OUTDIR is a deliverable and the cache is a build
+## artifact of several hundred MB.
+##
 ## Produces, under OUTDIR:
 ##   Spatial_analysis.xlsx          co-location, neighbourhood, ring spread
 ##   neighborhood_per_anchor.csv.gz one row per anchor cell
@@ -153,11 +159,11 @@ if (requireNamespace("HaloXi", quietly = TRUE)) {
 fs::dir_create(outdir)
 plots_dir <- fs::path(outdir, "plots")
 fs::dir_create(plots_dir)
-## Default to this stage's own cache, like the other drivers. --cache= points
-## it at an existing one instead -- the loaded object is the same for every
-## stage and is ~650 MB on a whole-section study, so a third copy of it is
-## waste, and rebuilding one means re-reading a multi-gigabyte CSV.
-cache_rds <- opt("cache", fs::path(outdir, "cache", "scan_obj.rds"))
+## Default to this stage's own cache, like the other drivers, but outside
+## OUTDIR. --cache= points it at an existing one instead -- the loaded object is
+## the same for every stage and is ~650 MB on a whole-section study, so a third
+## copy of it is waste, and rebuilding one means re-reading a multi-gigabyte CSV.
+cache_rds <- resolve_cache_path(outdir, opt("cache"))
 
 rules <- read_cell_rules(rules_path)
 message(glue::glue("spatial_data: rules <- {rules$rules_path}"))

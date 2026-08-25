@@ -9,24 +9,34 @@
 ## scan_data.R, just orchestrates the HaloXi engine over whatever rules and
 ## manifest it is given.
 ##
-##   usage: annotate_data.R MANIFEST.csv [OUTDIR] [--rules=FILE]
+##   usage: annotate_data.R MANIFEST.csv [OUTDIR] [--rules=FILE] [--cache=FILE]
 ##                          [--refresh] [--rows=N | --full]
 ##
 ##     MANIFEST.csv  CSV with columns Sample, HaloFile
 ##     OUTDIR        output directory (default: results/annot)
 ##     --rules=FILE  cell-annotation rules YAML. Default: annotation/cell_rules.yaml
 ##                   relative to the current directory (the project convention).
+##     --cache=FILE  loaded-object cache to build or reuse
+##                   (default: cache/<name of OUTDIR>/scan_obj.rds)
 ##     --refresh     ignore any cached loaded object and reload from source
 ##     --rows=N      read only the first N data rows per file (default 100,
 ##                   fast QC); --full reads all rows
 ##
-## Reuses the same loaded-object cache as scan_data.R (cache keyed on n_max), so
-## an existing scan cache is reused. Produces, under OUTDIR:
+## Shares the loaded-object cache with scan_data.R and spatial_data.R -- point
+## them at one file with --cache= and the 600 MB object is built once. The cache
+## is keyed on the manifest and the row cap together, so a run against an edited
+## manifest reloads rather than silently describing the old sample set.
+##
+## Produces, under OUTDIR:
 ##   cell_rules.md            human-readable rules the calls were made from
 ##   Cell_annotation.xlsx     composition + state breakdown tables
 ##   plots/*.png              composition bars, state heatmap, per-parent states
 ##   Cell_annotation_report.html  self-contained report
-##   cache/scan_obj.rds       cached combined loaded object (shared with scanner)
+##
+## The cache is NOT written under OUTDIR -- OUTDIR is a deliverable and the cache
+## is a build artifact of several hundred MB. It goes to
+## cache/<name of OUTDIR>/scan_obj.rds instead. A cache left where older versions
+## put it, under OUTDIR, is named and ignored.
 ##
 ## The script uses the HaloXi package functions. If HaloXi is not installed it is
 ## loaded from source with pkgload (package root is one level up from scripts/).
@@ -49,10 +59,11 @@ args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function() {
     cat("\n")
-    cat("   usage: annotate_data.R MANIFEST.csv [OUTDIR] [--rules=FILE] [--refresh] [--rows=N | --full]\n\n")
+    cat("   usage: annotate_data.R MANIFEST.csv [OUTDIR] [--rules=FILE] [--cache=FILE] [--refresh] [--rows=N | --full]\n\n")
     cat("      MANIFEST.csv  CSV with columns Sample, HaloFile\n")
     cat("      OUTDIR        output directory (default: results/annot)\n")
     cat("      --rules=FILE  rules YAML (default: annotation/cell_rules.yaml)\n")
+    cat("      --cache=FILE  loaded-object cache (default: cache/<OUTDIR name>/scan_obj.rds)\n")
     cat("      --refresh     reload from source, ignoring cache\n")
     cat("      --rows=N      first N data rows per file (default 100, fast QC)\n")
     cat("      --full        read all rows (slow on big files)\n\n")
@@ -60,6 +71,9 @@ usage <- function() {
 }
 
 refresh <- "--refresh" %in% args
+
+cache_arg <- grep("^--cache=", args, value = TRUE)
+cache_arg <- if (length(cache_arg)) sub("^--cache=", "", cache_arg[1]) else NULL
 
 n_max <- 100
 if ("--full" %in% args) n_max <- Inf
@@ -110,7 +124,7 @@ if (requireNamespace("HaloXi", quietly = TRUE)) {
 fs::dir_create(outdir)
 plots_dir <- fs::path(outdir, "plots")
 fs::dir_create(plots_dir)
-cache_rds <- fs::path(outdir, "cache", "scan_obj.rds")
+cache_rds <- resolve_cache_path(outdir, cache_arg)
 
 rules <- read_cell_rules(rules_path)
 message(glue::glue("annotate_data: rules <- {rules$rules_path}"))

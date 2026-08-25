@@ -15,7 +15,7 @@ It does **not** assign cell types — that is Stage 2 (annotate).
 ## How to run it
 
 ```sh
-Rscript HaloXi/scripts/scan_data.R MANIFEST.csv [OUTDIR] [--refresh] [--rows=N | --full]
+Rscript HaloXi/scripts/scan_data.R MANIFEST.csv [OUTDIR] [--cache=FILE] [--refresh] [--rows=N | --full]
 ```
 
 | Argument | Meaning |
@@ -24,6 +24,7 @@ Rscript HaloXi/scripts/scan_data.R MANIFEST.csv [OUTDIR] [--refresh] [--rows=N |
 | `OUTDIR` | Where outputs go. Default: `results/scan`. |
 | `--full` | Read **all** rows of every file (accurate, slower). |
 | `--rows=N` | Read only the first N rows per file. |
+| `--cache=FILE` | Where the loaded data is cached. Default: `cache/<name of OUTDIR>/scan_obj.rds`. |
 | `--refresh` | Ignore the cached loaded data and re-read the CSVs from scratch. |
 
 **Default (no `--full`/`--rows`): fast QC — first 100 rows per file.** Good for a
@@ -50,8 +51,11 @@ Rscript HaloXi/scripts/scan_data.R manifest.csv results/scan --full
 - **`plots/`** — `cell_counts.png`, `marker_presence.png` (panel coverage),
   `marker_heatmap.png` (positivity), and one `spatial_<Sample>.png` tissue
   footprint per sample.
-- **`cache/scan_obj.rds`** — the loaded data, cached. **Stage 2 reuses this**, so
-  run scan before annotate and the annotate step is fast.
+The loaded data is cached too, but **not in `OUTDIR`** — `OUTDIR` is what you
+send to a collaborator, and the cache is a build artifact that can run to
+hundreds of megabytes. It goes to `cache/<name of OUTDIR>/scan_obj.rds`
+instead. Point stage 2 at the same file with `--cache=` and it reuses the
+loaded data rather than reading the CSVs again.
 
 ## How to read the results
 
@@ -78,8 +82,15 @@ Rscript HaloXi/scripts/scan_data.R manifest.csv results/scan --full
 - **Differing panels.** Don't compare a marker across samples that don't all have
   it. The coverage matrix tells you which are safe.
 - **Re-running.** Normal re-runs reuse the cache (fast). Use `--refresh` only if
-  the underlying CSVs changed. The cache also remembers whether it was a fast or
-  full load, and won't reuse a 100-row cache for a `--full` request.
+  the underlying CSVs changed. The cache remembers both the manifest and the row
+  cap it was built from, so it won't reuse a 100-row cache for a `--full`
+  request, and won't reuse a cache built from a different set of samples — edit
+  the manifest and the next run reloads rather than quietly describing the old
+  sample set.
+- **Upgrading from an older HaloXi.** The cache used to be written inside
+  `OUTDIR`. One left there is named in a message and ignored, not reused. Pass
+  `--cache=OUTDIR/cache/scan_obj.rds` to keep using it, or move it to the new
+  default and save yourself a re-read.
 
 ## Next step
 

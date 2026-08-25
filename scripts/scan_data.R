@@ -3,10 +3,13 @@
 ## ===========================================================================
 ## scan_data.R - initial data scanner for a Halo sample manifest
 ##
-##   usage: scan_data.R MANIFEST.csv [OUTDIR] [--refresh] [--rows=N | --full]
+##   usage: scan_data.R MANIFEST.csv [OUTDIR] [--cache=FILE] [--refresh]
+##                      [--rows=N | --full]
 ##
 ##     MANIFEST.csv  CSV with columns Sample, HaloFile
 ##     OUTDIR        output directory (default: results/scan)
+##     --cache=FILE  loaded-object cache to build or reuse
+##                   (default: cache/<name of OUTDIR>/scan_obj.rds)
 ##     --refresh     ignore any cached loaded object and reload from source
 ##     --rows=N      read only the first N data rows per file (default 100,
 ##                   for a fast initial QC scan)
@@ -23,7 +26,11 @@
 ##                             and one spatial footprint per sample
 ##                             (spatial_<Sample>.png)
 ##   Halo_scan_report.html     self-contained report tying it together
-##   cache/scan_obj.rds        cached combined loaded object
+##
+## The loaded-object cache is NOT written under OUTDIR -- OUTDIR is a
+## deliverable and the cache is a build artifact of several hundred MB. It goes
+## to cache/<name of OUTDIR>/scan_obj.rds instead; --cache= overrides that. A
+## cache left where older versions put it, under OUTDIR, is named and ignored.
 ##
 ## The scanner uses the HaloXi package functions (load_halo, scan_manifest,
 ## ...). If HaloXi is not installed it is loaded from source with pkgload.
@@ -37,9 +44,10 @@ args <- commandArgs(trailingOnly = TRUE)
 
 usage <- function() {
     cat("\n")
-    cat("   usage: scan_data.R MANIFEST.csv [OUTDIR] [--refresh] [--rows=N | --full]\n\n")
+    cat("   usage: scan_data.R MANIFEST.csv [OUTDIR] [--cache=FILE] [--refresh] [--rows=N | --full]\n\n")
     cat("      MANIFEST.csv  CSV with columns Sample, HaloFile\n")
     cat("      OUTDIR        output directory (default: results/scan)\n")
+    cat("      --cache=FILE  loaded-object cache (default: cache/<OUTDIR name>/scan_obj.rds)\n")
     cat("      --refresh     reload from source, ignoring cache\n")
     cat("      --rows=N      first N data rows per file (default 100, fast QC)\n")
     cat("      --full        read all rows (slow on big files)\n\n")
@@ -47,6 +55,9 @@ usage <- function() {
 }
 
 refresh <- "--refresh" %in% args
+
+cache_arg <- grep("^--cache=", args, value = TRUE)
+cache_arg <- if (length(cache_arg)) sub("^--cache=", "", cache_arg[1]) else NULL
 
 ## row cap: --full -> Inf, --rows=N -> N, otherwise default 100 (fast QC)
 n_max <- 100
@@ -94,7 +105,7 @@ if (requireNamespace("HaloXi", quietly = TRUE)) {
 fs::dir_create(outdir)
 plots_dir <- fs::path(outdir, "plots")
 fs::dir_create(plots_dir)
-cache_rds <- fs::path(outdir, "cache", "scan_obj.rds")
+cache_rds <- resolve_cache_path(outdir, cache_arg)
 
 message("scan_data: scanning manifest ", manifest_csv,
         if (is.finite(n_max)) sprintf(" (first %d rows/file)", n_max) else " (all rows)")
