@@ -157,19 +157,53 @@ marker_presence_matrix <- function(marker_scan) {
         arrange(desc(nSamples), MarkerNorm)
 }
 
+#' The identity a cached object is compared on
+#'
+#' `Sample` and `HaloFile` for every manifest row, in order, as plain character
+#' vectors -- deliberately not the manifest tibble itself, so that attributes,
+#' row names or an extra column a caller added do not force a needless reload of
+#' a 600 MB object. `HaloFile` is already an absolute resolved path by the time
+#' [read_manifest()] is done with it, so both sides compare like with like.
+#'
+#' Returns NULL when there is no usable manifest, which callers must treat as a
+#' mismatch rather than comparing NULL to NULL.
+#'
+#' @param manifest A manifest tibble, or NULL.
+#' @return A list of two character vectors, or NULL.
+#' @keywords internal
+.manifest_key <- function(manifest) {
+    if (is.null(manifest) || !all(c("Sample", "HaloFile") %in% names(manifest))) {
+        return(NULL)
+    }
+    list(
+        Sample   = as.character(manifest$Sample),
+        HaloFile = as.character(manifest$HaloFile)
+    )
+}
+
 #' Load every sample in a manifest into a single combined Halo object
 #'
 #' Calls [load_halo()] on each existing HaloFile and row-binds the per-sample
 #' `cell.data` and `marker.data` tables. The combined object is cached to an
 #' RDS file so repeated scans of the same manifest are fast.
 #'
+#' The cache is keyed on **the manifest and the row cap together**: on the
+#' `Sample` and `HaloFile` of every manifest row, in order, and on `n_max`. A
+#' cache built from a different sample set, from different files, from rows in a
+#' different order, or by a version that recorded no manifest, is reloaded
+#' rather than reused. Keying on `n_max` alone meant a run against an edited
+#' manifest silently described the old sample set.
+#'
 #' @param manifest A validated manifest tibble from [read_manifest()].
 #' @param cache_rds Optional path to cache the combined object. If the file
-#'   exists and `refresh` is FALSE it is reloaded instead of re-parsing the
-#'   Halo CSVs.
+#'   exists, `refresh` is FALSE, and the cached object was built from the same
+#'   manifest and row cap, it is reloaded instead of re-parsing the Halo CSVs.
+#'   [resolve_cache_path()] is what the CLI drivers use to choose this.
 #' @param refresh If TRUE, ignore any existing cache and reload from source.
 #' @param controlMarkers Markers treated as controls (excluded from the
-#'   `MarkerPos` cell phenotype). Passed through to [load_halo()].
+#'   `MarkerPos` cell phenotype). Passed through to [load_halo()]. Note that
+#'   this is **not** part of the cache key: no caller varies it, and the object
+#'   does not record it.
 #' @param n_max Max data rows to read per Halo file. The default of 100 gives a
 #'   fast initial QC scan; set to `Inf` for a full load. Passed to [load_halo()].
 #'
@@ -182,14 +216,23 @@ load_manifest <- function(manifest, cache_rds = NULL, refresh = FALSE,
 
     if (!is.null(cache_rds) && fs::file_exists(cache_rds) && !refresh) {
         cached <- readRDS(cache_rds)
-        ## only reuse a cache built with the same row cap
-        if (identical(cached$n_max, n_max)) {
+        cached_key <- .manifest_key(cached$manifest)
+        want_key <- .manifest_key(manifest)
+
+        ## reuse only a cache built from the same manifest AND the same row cap
+        if (!identical(cached$n_max, n_max)) {
+            message(glue::glue(
+                "load_manifest: cache n_max={cached$n_max} != requested {n_max}; reloading"
+            ))
+        } else if (is.null(cached_key) || !identical(cached_key, want_key)) {
+            ## is.null() tested first and separately: identical(NULL, NULL) is
+            ## TRUE, so a cache with no manifest would otherwise pass -- and
+            ## those are the caches most likely to be stale.
+            message("load_manifest: cache manifest differs from the one requested; reloading")
+        } else {
             message(glue::glue("load_manifest: using cache {cache_rds} (n_max={n_max})"))
             return(cached)
         }
-        message(glue::glue(
-            "load_manifest: cache n_max={cached$n_max} != requested {n_max}; reloading"
-        ))
     }
 
     usable <- manifest |> filter(Exists)

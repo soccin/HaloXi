@@ -24,7 +24,8 @@ Suggests:
     rmarkdown,
     knitr,
     testthat (>= 3.0.0),
-    tibble
+    tibble,
+    withr
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 License: file LICENSE

@@ -16,13 +16,16 @@ load_manifest(
 \item{manifest}{A validated manifest tibble from \code{\link[=read_manifest]{read_manifest()}}.}
 
 \item{cache_rds}{Optional path to cache the combined object. If the file
-exists and \code{refresh} is FALSE it is reloaded instead of re-parsing the
-Halo CSVs.}
+exists, \code{refresh} is FALSE, and the cached object was built from the same
+manifest and row cap, it is reloaded instead of re-parsing the Halo CSVs.
+\code{\link[=resolve_cache_path]{resolve_cache_path()}} is what the CLI drivers use to choose this.}
 
 \item{refresh}{If TRUE, ignore any existing cache and reload from source.}
 
 \item{controlMarkers}{Markers treated as controls (excluded from the
-\code{MarkerPos} cell phenotype). Passed through to \code{\link[=load_halo]{load_halo()}}.}
+\code{MarkerPos} cell phenotype). Passed through to \code{\link[=load_halo]{load_halo()}}. Note that
+this is \strong{not} part of the cache key: no caller varies it, and the object
+does not record it.}
 
 \item{n_max}{Max data rows to read per Halo file. The default of 100 gives a
 fast initial QC scan; set to \code{Inf} for a full load. Passed to \code{\link[=load_halo]{load_halo()}}.}
@@ -35,4 +38,12 @@ column), \code{manifest}, \code{n_max}, and \code{VERSION}.
 Calls \code{\link[=load_halo]{load_halo()}} on each existing HaloFile and row-binds the per-sample
 \code{cell.data} and \code{marker.data} tables. The combined object is cached to an
 RDS file so repeated scans of the same manifest are fast.
+}
+\details{
+The cache is keyed on \strong{the manifest and the row cap together}: on the
+\code{Sample} and \code{HaloFile} of every manifest row, in order, and on \code{n_max}. A
+cache built from a different sample set, from different files, from rows in a
+different order, or by a version that recorded no manifest, is reloaded
+rather than reused. Keying on \code{n_max} alone meant a run against an edited
+manifest silently described the old sample set.
 }
